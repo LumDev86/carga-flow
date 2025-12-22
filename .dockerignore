@@ -1,0 +1,49 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# Build outputs
+dist
+build
+*.tsbuildinfo
+
+# Tests
+coverage
+.nyc_output
+*.spec.ts
+test
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Claude Code
+.claude
+
+# Misc
+README.md
+.prettierrc
+.eslintrc.js
+eslint.config.mjs
+tsconfig.json
+tsconfig.build.json
+nest-cli.json
+
+# OS
+.DS_Store
+Thumbs.db
