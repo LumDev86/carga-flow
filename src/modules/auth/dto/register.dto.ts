@@ -67,7 +67,7 @@ export class RegisterDto {
   lastName: string;
 
   @ApiProperty({
-    example: 'CHOFER',
+    example: 'CHOFER || SOLICITANTE || PUERTO || ADMIN',
     description: 'Rol del usuario',
     enum: UserRole,
     default: UserRole.SOLICITANTE,
