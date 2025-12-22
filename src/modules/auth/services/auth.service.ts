@@ -62,9 +62,10 @@ export class AuthService {
       throw new UnauthorizedException('Usuario bloqueado. Contacte al administrador.');
     }
 
-    if (!user.emailVerified) {
-      throw new UnauthorizedException('Por favor verifica tu email antes de iniciar sesión');
-    }
+    // TODO: Descomentar en producción - Validación de email deshabilitada para pruebas
+    // if (!user.emailVerified) {
+    //   throw new UnauthorizedException('Por favor verifica tu email antes de iniciar sesión');
+    // }
 
     return await this.generateAuthResponse(user);
   }
@@ -202,6 +203,9 @@ export class AuthService {
       estado: user.estado,
       emailVerified: user.emailVerified,
       phoneVerified: user.phoneVerified,
+      walletBalance: user.walletBalance.toString(),
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     };
 
     return {

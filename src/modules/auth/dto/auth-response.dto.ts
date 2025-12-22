@@ -29,6 +29,15 @@ export class UserResponseDto {
 
   @ApiProperty({ example: false })
   phoneVerified: boolean;
+
+  @ApiProperty({ example: '0.00' })
+  walletBalance: string;
+
+  @ApiProperty({ example: '2025-12-22T14:30:00.000Z' })
+  createdAt: Date;
+
+  @ApiProperty({ example: '2025-12-22T14:30:00.000Z' })
+  updatedAt: Date;
 }
 
 export class AuthResponseDto {
