@@ -62,14 +62,18 @@ export class AuthController {
   @Public()
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Verificar código OTP' })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiOperation({
+    summary: 'Verificar código OTP',
+    description: '⚠️ ENDPOINT NO IMPLEMENTADO - Por el momento la verificación OTP está deshabilitada para facilitar pruebas. Los usuarios pueden hacer login directamente después del registro sin verificar email/teléfono.',
+    deprecated: true,
+  })
+  @ApiResponse({
+    status: 200,
     description: 'OTP verificado exitosamente',
     type: AuthResponseDto,
   })
-  @ApiResponse({ 
-    status: 400, 
+  @ApiResponse({
+    status: 400,
     description: 'Código OTP inválido o expirado',
   })
   async verifyOtp(@Body() verifyOtpDto: VerifyOtpDto): Promise<AuthResponseDto> {
