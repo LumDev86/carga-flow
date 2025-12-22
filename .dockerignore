@@ -39,9 +39,6 @@ README.md
 .prettierrc
 .eslintrc.js
 eslint.config.mjs
-tsconfig.json
-tsconfig.build.json
-nest-cli.json
 
 # OS
 .DS_Store
