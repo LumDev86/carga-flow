@@ -3,11 +3,14 @@ import {
   UnauthorizedException,
   BadRequestException,
   NotFoundException,
+  Inject,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan } from 'typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { UsersService } from '../../users/users.service';
@@ -30,6 +33,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     @InjectRepository(RefreshToken)
     private readonly refreshTokenRepository: Repository<RefreshToken>,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<{ message: string }> {
@@ -77,40 +81,28 @@ export class AuthService {
       throw new NotFoundException('Usuario no encontrado');
     }
 
-    const now = new Date();
+    let isValid = false;
 
     if (verifyOtpDto.type === OtpType.EMAIL) {
-      if (!user.emailOtp || !user.emailOtpExpires) {
-        throw new BadRequestException('No hay código OTP pendiente');
-      }
+      isValid = await this.otpService.verifyEmailOtp(user.id, verifyOtpDto.code);
 
-      if (user.emailOtpExpires < now) {
-        throw new BadRequestException('El código OTP ha expirado');
-      }
-
-      if (user.emailOtp !== verifyOtpDto.code) {
-        throw new BadRequestException('Código OTP inválido');
+      if (!isValid) {
+        throw new BadRequestException('Código OTP inválido o expirado');
       }
 
       await this.usersService.verifyEmail(user.id);
-      await this.usersService.update(user.id, { 
-        estado: UserStatus.VERIFIED 
+      await this.usersService.update(user.id, {
+        estado: UserStatus.VERIFIED
       });
 
       user.emailVerified = true;
       user.estado = UserStatus.VERIFIED;
 
     } else if (verifyOtpDto.type === OtpType.PHONE) {
-      if (!user.phoneOtp || !user.phoneOtpExpires) {
-        throw new BadRequestException('No hay código OTP pendiente');
-      }
+      isValid = await this.otpService.verifyPhoneOtp(user.id, verifyOtpDto.code);
 
-      if (user.phoneOtpExpires < now) {
-        throw new BadRequestException('El código OTP ha expirado');
-      }
-
-      if (user.phoneOtp !== verifyOtpDto.code) {
-        throw new BadRequestException('Código OTP inválido');
+      if (!isValid) {
+        throw new BadRequestException('Código OTP inválido o expirado');
       }
 
       await this.usersService.verifyPhone(user.id);
@@ -121,6 +113,12 @@ export class AuthService {
   }
 
   async refreshToken(oldRefreshToken: string): Promise<AuthResponseDto> {
+    // Verificar blacklist en Redis primero (más rápido)
+    const isBlacklisted = await this.isTokenBlacklisted(oldRefreshToken);
+    if (isBlacklisted) {
+      throw new UnauthorizedException('Refresh token revocado');
+    }
+
     const refreshToken = await this.refreshTokenRepository.findOne({
       where: { token: oldRefreshToken },
       relations: ['user'],
@@ -138,20 +136,36 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token expirado');
     }
 
+    // Revocar token antiguo
     refreshToken.isRevoked = true;
     refreshToken.revokedAt = new Date();
     await this.refreshTokenRepository.save(refreshToken);
+
+    // Agregar a blacklist
+    const blacklistKey = `blacklist:refresh:${oldRefreshToken}`;
+    await this.cacheManager.set(blacklistKey, 'revoked', 30 * 24 * 60 * 60 * 1000);
 
     return await this.generateAuthResponse(refreshToken.user);
   }
 
   async logout(userId: string, refreshToken: string): Promise<{ message: string }> {
+    // Revocar refresh token en base de datos
     await this.refreshTokenRepository.update(
       { token: refreshToken, userId },
       { isRevoked: true, revokedAt: new Date() },
     );
 
+    // Agregar refresh token a blacklist en Redis (TTL de 30 días)
+    const blacklistKey = `blacklist:refresh:${refreshToken}`;
+    await this.cacheManager.set(blacklistKey, 'revoked', 30 * 24 * 60 * 60 * 1000);
+
     return { message: 'Sesión cerrada exitosamente' };
+  }
+
+  async isTokenBlacklisted(token: string): Promise<boolean> {
+    const blacklistKey = `blacklist:refresh:${token}`;
+    const result = await this.cacheManager.get(blacklistKey);
+    return !!result;
   }
 
   async revokeAllTokens(userId: string): Promise<void> {

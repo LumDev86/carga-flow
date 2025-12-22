@@ -1,20 +1,23 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { UsersService } from '../../users/users.service';
+import { Injectable, Logger, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { User } from '../../users/entities/user.entity';
 
 @Injectable()
 export class OtpService {
   private readonly logger = new Logger(OtpService.name);
+  private readonly OTP_TTL = 600; // 10 minutos en segundos
 
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+  ) {}
 
   async generateAndSendEmailOtp(user: User): Promise<void> {
     const otp = this.generateOtpCode();
-    
-    const expiresAt = new Date();
-    expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+    const key = `otp:email:${user.id}`;
 
-    await this.usersService.setEmailOtp(user.id, otp, expiresAt);
+    // Guardar OTP en Redis con TTL de 10 minutos
+    await this.cacheManager.set(key, otp, this.OTP_TTL * 1000);
 
     await this.sendEmailOtp(user.email, otp);
 
@@ -23,15 +26,48 @@ export class OtpService {
 
   async generateAndSendPhoneOtp(user: User): Promise<void> {
     const otp = this.generateOtpCode();
-    
-    const expiresAt = new Date();
-    expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+    const key = `otp:phone:${user.id}`;
 
-    await this.usersService.setPhoneOtp(user.id, otp, expiresAt);
+    // Guardar OTP en Redis con TTL de 10 minutos
+    await this.cacheManager.set(key, otp, this.OTP_TTL * 1000);
 
     await this.sendPhoneOtp(user.phone, otp);
 
     this.logger.log(`OTP de teléfono generado para ${user.phone}: ${otp}`);
+  }
+
+  async verifyEmailOtp(userId: string, code: string): Promise<boolean> {
+    const key = `otp:email:${userId}`;
+    const storedOtp = await this.cacheManager.get<string>(key);
+
+    if (!storedOtp) {
+      return false;
+    }
+
+    if (storedOtp !== code) {
+      return false;
+    }
+
+    // Eliminar OTP después de verificación exitosa
+    await this.cacheManager.del(key);
+    return true;
+  }
+
+  async verifyPhoneOtp(userId: string, code: string): Promise<boolean> {
+    const key = `otp:phone:${userId}`;
+    const storedOtp = await this.cacheManager.get<string>(key);
+
+    if (!storedOtp) {
+      return false;
+    }
+
+    if (storedOtp !== code) {
+      return false;
+    }
+
+    // Eliminar OTP después de verificación exitosa
+    await this.cacheManager.del(key);
+    return true;
   }
 
   private generateOtpCode(): string {
