@@ -89,13 +89,36 @@ export class User {
   @Exclude()
   phoneOtp: string;
 
-  @Column({ 
+  @Column({
     nullable: true,
     type: 'timestamp',
-    name: 'phone_otp_expires' 
+    name: 'phone_otp_expires'
   })
   @Exclude()
   phoneOtpExpires: Date;
+
+  @Column({
+    nullable: true,
+    type: 'decimal',
+    precision: 10,
+    scale: 7
+  })
+  latitude: number;
+
+  @Column({
+    nullable: true,
+    type: 'decimal',
+    precision: 10,
+    scale: 7
+  })
+  longitude: number;
+
+  @Column({
+    nullable: true,
+    type: 'varchar',
+    length: 500
+  })
+  address: string;
 
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens: RefreshToken[];

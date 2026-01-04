@@ -15,9 +15,11 @@ import {
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateLocationDto } from './dto/update-location.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('users')
 @Controller('users')
@@ -32,6 +34,18 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Lista de usuarios' })
   async findAll() {
     return await this.usersService.findAll();
+  }
+
+  @Patch('location')
+  @ApiOperation({ summary: 'Actualizar ubicación del usuario autenticado' })
+  @ApiResponse({ status: 200, description: 'Ubicación actualizada exitosamente' })
+  @ApiResponse({ status: 400, description: 'Datos de ubicación inválidos' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  async updateLocation(
+    @CurrentUser('id') userId: string,
+    @Body() updateLocationDto: UpdateLocationDto,
+  ) {
+    return await this.usersService.updateLocation(userId, updateLocationDto);
   }
 
   @Get(':id')

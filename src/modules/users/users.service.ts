@@ -9,6 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateLocationDto } from './dto/update-location.dto';
 
 @Injectable()
 export class UsersService {
@@ -106,5 +107,15 @@ export class UsersService {
       phoneOtp: undefined,
       phoneOtpExpires: undefined,
     });
+  }
+
+  async updateLocation(userId: string, updateLocationDto: UpdateLocationDto): Promise<User> {
+    const user = await this.findOne(userId);
+
+    user.latitude = updateLocationDto.latitude;
+    user.longitude = updateLocationDto.longitude;
+    user.address = updateLocationDto.address || null;
+
+    return await this.userRepository.save(user);
   }
 }
