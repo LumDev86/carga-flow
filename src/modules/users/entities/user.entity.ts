@@ -103,7 +103,7 @@ export class User {
     precision: 10,
     scale: 7
   })
-  latitude: number;
+  latitude: number | null;
 
   @Column({
     nullable: true,
@@ -111,14 +111,14 @@ export class User {
     precision: 10,
     scale: 7
   })
-  longitude: number;
+  longitude: number | null;
 
   @Column({
     nullable: true,
     type: 'varchar',
     length: 500
   })
-  address: string;
+  address: string | null;
 
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens: RefreshToken[];
