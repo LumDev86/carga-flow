@@ -9,6 +9,7 @@ import {
 import { Exclude } from 'class-transformer';
 import { UserRole } from '../../../shared/enums/user-role.enum';
 import { UserStatus } from '../../../shared/enums/user-status.enum';
+import { AccountType } from '../../../shared/enums/account-type.enum';
 import { RefreshToken } from './refresh-token.entity';
 
 @Entity('users')
@@ -38,6 +39,38 @@ export class User {
     default: UserRole.SOLICITANTE,
   })
   rol: UserRole;
+
+  @Column({
+    type: 'enum',
+    enum: AccountType,
+    default: AccountType.INDIVIDUO,
+    name: 'account_type',
+  })
+  accountType: AccountType;
+
+  @Column({
+    nullable: true,
+    type: 'varchar',
+    length: 255,
+    name: 'company_name',
+  })
+  companyName: string | null;
+
+  @Column({
+    nullable: true,
+    type: 'varchar',
+    length: 50,
+    name: 'company_tax_id',
+  })
+  companyTaxId: string | null;
+
+  @Column({
+    nullable: true,
+    type: 'varchar',
+    length: 500,
+    name: 'company_address',
+  })
+  companyAddress: string | null;
 
   @Column({
     type: 'enum',

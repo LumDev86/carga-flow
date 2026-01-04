@@ -1,15 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { 
-  IsEmail, 
-  IsNotEmpty, 
-  IsString, 
-  MinLength, 
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  MinLength,
   MaxLength,
   Matches,
   IsEnum,
   IsOptional,
 } from 'class-validator';
 import { UserRole } from '../../../shared/enums/user-role.enum';
+import { AccountType } from '../../../shared/enums/account-type.enum';
 
 export class RegisterDto {
   @ApiProperty({
@@ -75,4 +76,44 @@ export class RegisterDto {
   @IsEnum(UserRole, { message: 'Rol inválido' })
   @IsOptional()
   rol?: UserRole;
+
+  @ApiProperty({
+    example: 'EMPRESA || INDIVIDUO',
+    description: 'Tipo de cuenta',
+    enum: AccountType,
+    default: AccountType.INDIVIDUO,
+  })
+  @IsEnum(AccountType, { message: 'Tipo de cuenta inválido' })
+  @IsOptional()
+  accountType?: AccountType;
+
+  @ApiProperty({
+    example: 'Transportes ABC S.A.',
+    description: 'Nombre de la empresa (requerido si accountType es EMPRESA)',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  @MaxLength(255)
+  companyName?: string;
+
+  @ApiProperty({
+    example: '30-12345678-9',
+    description: 'CUIT o DNI fiscal (requerido si accountType es EMPRESA)',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  companyTaxId?: string;
+
+  @ApiProperty({
+    example: 'Av. Corrientes 1234, Buenos Aires, Argentina',
+    description: 'Dirección fiscal de la empresa',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  companyAddress?: string;
 }
