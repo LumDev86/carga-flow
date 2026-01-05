@@ -23,6 +23,7 @@ import { VerifyOtpDto, OtpType } from '../dto/verify-otp.dto';
 import { AuthResponseDto, UserResponseDto } from '../dto/auth-response.dto';
 import { JwtPayload } from '../../../shared/interfaces/jwt-payload.interface';
 import { UserStatus } from '../../../shared/enums/user-status.enum';
+import { UpdateUserDto } from '../../users/dto/update-user.dto';
 
 @Injectable()
 export class AuthService {
@@ -179,6 +180,10 @@ export class AuthService {
     await this.refreshTokenRepository.delete({
       expiresAt: LessThan(new Date()),
     });
+  }
+
+  async updateProfile(userId: string, updateUserDto: UpdateUserDto): Promise<User> {
+    return await this.usersService.update(userId, updateUserDto);
   }
 
   private async generateAuthResponse(user: User): Promise<AuthResponseDto> {

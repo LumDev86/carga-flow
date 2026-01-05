@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Get,
+  Patch,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -21,6 +22,7 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { User } from '../users/entities/user.entity';
+import { UpdateUserDto } from '../users/dto/update-user.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -115,11 +117,29 @@ export class AuthController {
   @Get('me')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Obtener información del usuario autenticado' })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Información del usuario',
   })
   async getProfile(@CurrentUser() user: User) {
     return user;
+  }
+
+  @Patch('profile')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Actualizar perfil del usuario autenticado' })
+  @ApiResponse({
+    status: 200,
+    description: 'Perfil actualizado exitosamente',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Datos inválidos',
+  })
+  async updateProfile(
+    @CurrentUser('id') userId: string,
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
+    return await this.authService.updateProfile(userId, updateUserDto);
   }
 }
