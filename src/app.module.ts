@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
+import { GeolocationModule } from './modules/geolocation/geolocation.module';
 import { RedisModule } from './common/cache/redis.module';
 
 @Module({
@@ -33,6 +34,7 @@ import { RedisModule } from './common/cache/redis.module';
     // Feature modules
     AuthModule,
     UsersModule,
+    GeolocationModule,
   ],
   controllers: [AppController],
   providers: [AppService],
