@@ -17,10 +17,27 @@ export class GeolocationController {
   @ApiOperation({ summary: 'Debug endpoint para verificar configuración' })
   async debug() {
     const apiKey = this.configService.get<string>('GOOGLE_MAPS_API_KEY');
+
+    // Test directo a Places API
+    let placesStatus = 'NOT_TESTED';
+    let placesError = null;
+    try {
+      const testUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=test&key=${apiKey}&language=es`;
+      const response = await fetch(testUrl);
+      const data = await response.json();
+      placesStatus = data.status;
+      placesError = data.error_message || null;
+    } catch (e) {
+      placesStatus = 'FETCH_ERROR';
+      placesError = e.message;
+    }
+
     return {
       apiKeyConfigured: !!apiKey,
       apiKeyLength: apiKey?.length || 0,
       apiKeyPrefix: apiKey?.substring(0, 8) || 'NOT_SET',
+      placesApiStatus: placesStatus,
+      placesApiError: placesError,
     };
   }
 
