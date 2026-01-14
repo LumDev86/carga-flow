@@ -53,8 +53,6 @@ export class GeolocationService {
       const response = await fetch(url);
       const data = await response.json();
 
-      console.log('Google Places API response status:', data.status);
-
       if (data.status === 'OK' && data.predictions) {
         return data.predictions.map((prediction: any) => ({
           placeId: prediction.place_id,
@@ -68,13 +66,7 @@ export class GeolocationService {
         return [];
       }
 
-      // Log detallado del error para debugging
-      console.error('Google Places API error:', {
-        status: data.status,
-        error_message: data.error_message,
-        apiKeyConfigured: !!this.googleMapsApiKey,
-        apiKeyLength: this.googleMapsApiKey?.length || 0,
-      });
+      console.error('Google Places API error:', data.status, data.error_message);
       return [];
     } catch (error) {
       console.error('Error en autocomplete:', error);
