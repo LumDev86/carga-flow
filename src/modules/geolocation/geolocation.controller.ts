@@ -1,12 +1,28 @@
 import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { GeolocationService, PlaceSuggestion, GeocodeResult } from './geolocation.service';
 import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('Geolocation')
 @Controller('geolocation')
 export class GeolocationController {
-  constructor(private readonly geolocationService: GeolocationService) {}
+  constructor(
+    private readonly geolocationService: GeolocationService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  @Public()
+  @Get('debug')
+  @ApiOperation({ summary: 'Debug endpoint para verificar configuración' })
+  async debug() {
+    const apiKey = this.configService.get<string>('GOOGLE_MAPS_API_KEY');
+    return {
+      apiKeyConfigured: !!apiKey,
+      apiKeyLength: apiKey?.length || 0,
+      apiKeyPrefix: apiKey?.substring(0, 8) || 'NOT_SET',
+    };
+  }
 
   @Public()
   @Get('autocomplete')
