@@ -9,6 +9,9 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci
 
+# Invalidate cache for source code copy
+ARG CACHEBUST=1
+
 # Copy source code
 COPY . .
 
