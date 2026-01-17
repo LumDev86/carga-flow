@@ -60,4 +60,15 @@ export class CreateUserDto {
   @IsString()
   @IsOptional()
   companyAddress?: string;
+
+  // Campos específicos para transportistas
+  @ApiProperty({ required: false, description: 'DNI del transportista (7-8 dígitos)' })
+  @IsString()
+  @IsOptional()
+  dni?: string;
+
+  @ApiProperty({ required: false, description: 'CUIT del transportista (11 dígitos)' })
+  @IsString()
+  @IsOptional()
+  cuit?: string;
 }

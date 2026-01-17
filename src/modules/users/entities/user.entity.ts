@@ -72,6 +72,21 @@ export class User {
   })
   companyAddress: string | null;
 
+  // Campos específicos para transportistas
+  @Column({
+    nullable: true,
+    type: 'varchar',
+    length: 20,
+  })
+  dni: string | null;
+
+  @Column({
+    nullable: true,
+    type: 'varchar',
+    length: 20,
+  })
+  cuit: string | null;
+
   @Column({
     type: 'enum',
     enum: UserStatus,
