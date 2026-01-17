@@ -116,4 +116,25 @@ export class RegisterDto {
   @IsOptional()
   @MaxLength(500)
   companyAddress?: string;
+
+  // Campos específicos para transportistas
+  @ApiProperty({
+    example: '12345678',
+    description: 'DNI del transportista (7-8 dígitos)',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  dni?: string;
+
+  @ApiProperty({
+    example: '20-12345678-9',
+    description: 'CUIT del transportista (11 dígitos)',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  cuit?: string;
 }
