@@ -1,6 +1,6 @@
 import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
-import { GeolocationService, PlaceSuggestion, GeocodeResult } from './geolocation.service';
+import { GeolocationService, PlaceSuggestion, GeocodeResult, DirectionsResult } from './geolocation.service';
 import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('Geolocation')
@@ -56,5 +56,32 @@ export class GeolocationController {
     }
 
     return this.geolocationService.geocodeAddress(address.trim());
+  }
+
+  @Public()
+  @Get('directions')
+  @ApiOperation({ summary: 'Obtener ruta entre dos puntos' })
+  @ApiQuery({ name: 'originLat', required: true, description: 'Latitud de origen' })
+  @ApiQuery({ name: 'originLng', required: true, description: 'Longitud de origen' })
+  @ApiQuery({ name: 'destLat', required: true, description: 'Latitud de destino' })
+  @ApiQuery({ name: 'destLng', required: true, description: 'Longitud de destino' })
+  @ApiResponse({ status: 200, description: 'Ruta con coordenadas, distancia y duración' })
+  @ApiResponse({ status: 400, description: 'Coordenadas requeridas' })
+  async getDirections(
+    @Query('originLat') originLat: string,
+    @Query('originLng') originLng: string,
+    @Query('destLat') destLat: string,
+    @Query('destLng') destLng: string,
+  ): Promise<DirectionsResult | null> {
+    const oLat = parseFloat(originLat);
+    const oLng = parseFloat(originLng);
+    const dLat = parseFloat(destLat);
+    const dLng = parseFloat(destLng);
+
+    if (isNaN(oLat) || isNaN(oLng) || isNaN(dLat) || isNaN(dLng)) {
+      throw new BadRequestException('Las coordenadas deben ser números válidos');
+    }
+
+    return this.geolocationService.getDirections(oLat, oLng, dLat, dLng);
   }
 }
