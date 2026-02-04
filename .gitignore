@@ -40,10 +40,6 @@ lerna-debug.log*
 .env.*.local
 .claude/
 
-# Prisma
-prisma/migrations/*
-!prisma/migrations/.gitkeep
-
 # Temp files
 *.swp
 *.swo
