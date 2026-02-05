@@ -1,7 +1,6 @@
-import { Module, Global } from '@nestjs/common';
+import { Module, Global, Logger } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { redisStore } from 'cache-manager-ioredis-yet';
 
 @Global()
 @Module({
@@ -10,17 +9,37 @@ import { redisStore } from 'cache-manager-ioredis-yet';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: async (configService: ConfigService) => {
-        const store = await redisStore({
-          host: configService.get('REDIS_HOST'),
-          port: configService.get('REDIS_PORT'),
-          username: configService.get('REDIS_USERNAME'),
-          password: configService.get('REDIS_PASSWORD'),
-          ttl: configService.get('REDIS_TTL') || 3600,
-        });
+        const redisHost = configService.get('REDIS_HOST');
+        const redisPort = configService.get('REDIS_PORT');
+        const logger = new Logger('RedisModule');
 
-        return {
-          store,
-        };
+        // If Redis is not configured, use in-memory cache
+        if (!redisHost || !redisPort) {
+          logger.warn('Redis not configured - using in-memory cache');
+          return {
+            ttl: 3600,
+          };
+        }
+
+        // Redis is configured, use Redis store
+        try {
+          const { redisStore } = await import('cache-manager-ioredis-yet');
+          const store = await redisStore({
+            host: redisHost,
+            port: redisPort,
+            username: configService.get('REDIS_USERNAME'),
+            password: configService.get('REDIS_PASSWORD'),
+            ttl: configService.get('REDIS_TTL') || 3600,
+          });
+
+          logger.log('Connected to Redis cache');
+          return { store };
+        } catch (error) {
+          logger.warn(`Failed to connect to Redis: ${error.message} - using in-memory cache`);
+          return {
+            ttl: 3600,
+          };
+        }
       },
       isGlobal: true,
     }),
