@@ -1,0 +1,179 @@
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
+import { User } from '../../users/entities/user.entity';
+import { TripStatus } from '../../../shared/enums/trip-status.enum';
+import { TransportType } from '../../../shared/enums/transport-type.enum';
+import { CargoType } from '../../../shared/enums/cargo-type.enum';
+
+@Entity('trips')
+export class Trip {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  // --- Relaciones ---
+  @ManyToOne(() => User, { eager: true })
+  @JoinColumn({ name: 'requester_id' })
+  requester: User;
+
+  @Column({ name: 'requester_id' })
+  requesterId: string;
+
+  @ManyToOne(() => User, { eager: true, nullable: true })
+  @JoinColumn({ name: 'driver_id' })
+  driver: User | null;
+
+  @Column({ name: 'driver_id', nullable: true })
+  driverId: string | null;
+
+  // --- Estado ---
+  @Column({
+    type: 'enum',
+    enum: TripStatus,
+    default: TripStatus.PENDING,
+  })
+  status: TripStatus;
+
+  // --- Origen ---
+  @Column({ name: 'origin_address' })
+  originAddress: string;
+
+  @Column({ name: 'origin_lat', type: 'decimal', precision: 10, scale: 7 })
+  originLat: number;
+
+  @Column({ name: 'origin_lng', type: 'decimal', precision: 10, scale: 7 })
+  originLng: number;
+
+  @Column({ name: 'origin_city', nullable: true })
+  originCity: string | null;
+
+  @Column({ name: 'origin_state', nullable: true })
+  originState: string | null;
+
+  // --- Destino ---
+  @Column({ name: 'destination_address' })
+  destinationAddress: string;
+
+  @Column({ name: 'destination_lat', type: 'decimal', precision: 10, scale: 7 })
+  destinationLat: number;
+
+  @Column({ name: 'destination_lng', type: 'decimal', precision: 10, scale: 7 })
+  destinationLng: number;
+
+  @Column({ name: 'destination_city', nullable: true })
+  destinationCity: string | null;
+
+  @Column({ name: 'destination_state', nullable: true })
+  destinationState: string | null;
+
+  // --- Carga ---
+  @Column({ name: 'cargo_description' })
+  cargoDescription: string;
+
+  @Column({
+    name: 'cargo_type',
+    type: 'enum',
+    enum: CargoType,
+    default: CargoType.CARGA_SIMPLE,
+  })
+  cargoType: CargoType;
+
+  @Column({
+    name: 'transport_type',
+    type: 'enum',
+    enum: TransportType,
+    default: TransportType.CAMION,
+  })
+  transportType: TransportType;
+
+  @Column({ name: 'cargo_weight', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  cargoWeight: number | null;
+
+  @Column({ name: 'cargo_weight_unit', nullable: true, default: 'kg' })
+  cargoWeightUnit: string | null;
+
+  @Column({ name: 'cargo_pallets', nullable: true, type: 'int' })
+  cargoPallets: number | null;
+
+  @Column({ name: 'cargo_fragile', default: false })
+  cargoFragile: boolean;
+
+  @Column({ name: 'cargo_instructions', nullable: true, type: 'text' })
+  cargoInstructions: string | null;
+
+  // --- Pricing ---
+  @Column({ name: 'distance_km', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  distanceKm: number | null;
+
+  @Column({ name: 'estimated_duration', nullable: true })
+  estimatedDuration: string | null;
+
+  @Column({ name: 'price', type: 'decimal', precision: 10, scale: 2 })
+  price: number;
+
+  @Column({ name: 'commission', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  commission: number;
+
+  @Column({ name: 'driver_payout', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  driverPayout: number;
+
+  // --- Schedule ---
+  @Column({ name: 'scheduled_pickup_at', type: 'timestamp', nullable: true })
+  scheduledPickupAt: Date | null;
+
+  @Column({ name: 'estimated_delivery_at', type: 'timestamp', nullable: true })
+  estimatedDeliveryAt: Date | null;
+
+  // --- Assignment tracking ---
+  @Column({ name: 'assigned_driver_id', nullable: true })
+  assignedDriverId: string | null;
+
+  @Column({ name: 'assignment_expires_at', type: 'timestamp', nullable: true })
+  assignmentExpiresAt: Date | null;
+
+  @Column({ name: 'broadcast_at', type: 'timestamp', nullable: true })
+  broadcastAt: Date | null;
+
+  // --- Timestamps reales ---
+  @Column({ name: 'accepted_at', type: 'timestamp', nullable: true })
+  acceptedAt: Date | null;
+
+  @Column({ name: 'picked_up_at', type: 'timestamp', nullable: true })
+  pickedUpAt: Date | null;
+
+  @Column({ name: 'delivered_at', type: 'timestamp', nullable: true })
+  deliveredAt: Date | null;
+
+  @Column({ name: 'cancelled_at', type: 'timestamp', nullable: true })
+  cancelledAt: Date | null;
+
+  // --- Evidencia ---
+  @Column({ name: 'remito_url', nullable: true })
+  remitoUrl: string | null;
+
+  @Column({ name: 'cargo_photo_url', nullable: true })
+  cargoPhotoUrl: string | null;
+
+  @Column({ name: 'observations', nullable: true, type: 'text' })
+  observations: string | null;
+
+  // --- Rating ---
+  @Column({ type: 'int', nullable: true })
+  rating: number | null;
+
+  @Column({ name: 'rating_comments', nullable: true, type: 'text' })
+  ratingComments: string | null;
+
+  // --- Timestamps ---
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
+}

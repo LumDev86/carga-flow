@@ -1,12 +1,15 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bull';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { GeolocationModule } from './modules/geolocation/geolocation.module';
 import { RedisModule } from './common/cache/redis.module';
+import { EventsModule } from './modules/events/events.module';
+import { TripsModule } from './modules/trips/trips.module';
 
 @Module({
   imports: [
@@ -30,6 +33,20 @@ import { RedisModule } from './common/cache/redis.module';
       },
     }),
 
+    // Bull Queue (Redis)
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        redis: {
+          host: configService.get('REDIS_HOST'),
+          port: configService.get<number>('REDIS_PORT'),
+          username: configService.get('REDIS_USERNAME'),
+          password: configService.get('REDIS_PASSWORD'),
+        },
+      }),
+    }),
+
     // Redis cache
     RedisModule,
 
@@ -37,6 +54,8 @@ import { RedisModule } from './common/cache/redis.module';
     AuthModule,
     UsersModule,
     GeolocationModule,
+    EventsModule,
+    TripsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
