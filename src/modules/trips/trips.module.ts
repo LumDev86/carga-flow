@@ -9,15 +9,26 @@ import { EventsModule } from '../events/events.module';
 import { GeolocationModule } from '../geolocation/geolocation.module';
 import { User } from '../users/entities/user.entity';
 
+// Check if Redis is configured
+const isRedisConfigured = () => {
+  return !!(process.env.REDIS_HOST && process.env.REDIS_PORT);
+};
+
+const bullImports = isRedisConfigured()
+  ? [BullModule.registerQueue({ name: 'trips' })]
+  : [];
+
+const bullProviders = isRedisConfigured() ? [AssignmentProcessor] : [];
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([Trip, User]),
-    BullModule.registerQueue({ name: 'trips' }),
+    ...bullImports,
     EventsModule,
     GeolocationModule,
   ],
   controllers: [TripsController],
-  providers: [TripsService, AssignmentProcessor],
+  providers: [TripsService, ...bullProviders],
   exports: [TripsService],
 })
 export class TripsModule {}

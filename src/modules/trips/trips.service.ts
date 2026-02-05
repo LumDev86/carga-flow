@@ -4,10 +4,12 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
+  Optional,
+  Inject,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { InjectQueue } from '@nestjs/bull';
+import { getQueueToken } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { Trip } from './entities/trip.entity';
 import { User } from '../users/entities/user.entity';
@@ -37,8 +39,9 @@ export class TripsService {
     private readonly userRepository: Repository<User>,
     private readonly eventsGateway: EventsGateway,
     private readonly geolocationService: GeolocationService,
-    @InjectQueue('trips')
-    private readonly tripsQueue: Queue,
+    @Optional()
+    @Inject(getQueueToken('trips'))
+    private readonly tripsQueue: Queue | null,
   ) {}
 
   async createTrip(userId: string, dto: CreateTripDto): Promise<Trip> {
@@ -104,12 +107,14 @@ export class TripsService {
       // Emit to assigned driver
       this.eventsGateway.emitToDriver(nearestDriver.id, 'trip:assigned', savedTrip);
 
-      // Schedule timeout job
-      await this.tripsQueue.add(
-        'assignment-timeout',
-        { tripId: savedTrip.id },
-        { delay: ASSIGNMENT_TIMEOUT_MS, jobId: `assignment-${savedTrip.id}` },
-      );
+      // Schedule timeout job (if queue is available)
+      if (this.tripsQueue) {
+        await this.tripsQueue.add(
+          'assignment-timeout',
+          { tripId: savedTrip.id },
+          { delay: ASSIGNMENT_TIMEOUT_MS, jobId: `assignment-${savedTrip.id}` },
+        );
+      }
 
       this.logger.log(`Trip ${savedTrip.id} assigned to driver ${nearestDriver.id}`);
     } else {
@@ -275,11 +280,13 @@ export class TripsService {
       const savedTrip = await manager.save(trip);
 
       // Remove timeout job if exists
-      try {
-        const job = await this.tripsQueue.getJob(`assignment-${tripId}`);
-        if (job) await job.remove();
-      } catch (e) {
-        // Job may not exist
+      if (this.tripsQueue) {
+        try {
+          const job = await this.tripsQueue.getJob(`assignment-${tripId}`);
+          if (job) await job.remove();
+        } catch (e) {
+          // Job may not exist
+        }
       }
 
       // Reload with relations
@@ -326,11 +333,13 @@ export class TripsService {
     const savedTrip = await this.tripRepository.save(trip);
 
     // Remove timeout job
-    try {
-      const job = await this.tripsQueue.getJob(`assignment-${tripId}`);
-      if (job) await job.remove();
-    } catch (e) {
-      // Job may not exist
+    if (this.tripsQueue) {
+      try {
+        const job = await this.tripsQueue.getJob(`assignment-${tripId}`);
+        if (job) await job.remove();
+      } catch (e) {
+        // Job may not exist
+      }
     }
 
     // Notify all drivers
@@ -454,10 +463,12 @@ export class TripsService {
     const savedTrip = await this.tripRepository.save(trip);
 
     // Remove timeout job if exists
-    try {
-      const job = await this.tripsQueue.getJob(`assignment-${tripId}`);
-      if (job) await job.remove();
-    } catch (e) {}
+    if (this.tripsQueue) {
+      try {
+        const job = await this.tripsQueue.getJob(`assignment-${tripId}`);
+        if (job) await job.remove();
+      } catch (e) {}
+    }
 
     // Notify driver if assigned
     if (previousDriverId) {

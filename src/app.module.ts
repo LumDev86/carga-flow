@@ -11,6 +11,29 @@ import { RedisModule } from './common/cache/redis.module';
 import { EventsModule } from './modules/events/events.module';
 import { TripsModule } from './modules/trips/trips.module';
 
+// Check if Redis is configured
+const isRedisConfigured = () => {
+  return !!(process.env.REDIS_HOST && process.env.REDIS_PORT);
+};
+
+// Conditionally include Bull module
+const conditionalImports = isRedisConfigured()
+  ? [
+      BullModule.forRootAsync({
+        imports: [ConfigModule],
+        inject: [ConfigService],
+        useFactory: (configService: ConfigService) => ({
+          redis: {
+            host: configService.get('REDIS_HOST'),
+            port: configService.get<number>('REDIS_PORT'),
+            username: configService.get('REDIS_USERNAME'),
+            password: configService.get('REDIS_PASSWORD'),
+          },
+        }),
+      }),
+    ]
+  : [];
+
 @Module({
   imports: [
     // Load environment variables
@@ -33,19 +56,8 @@ import { TripsModule } from './modules/trips/trips.module';
       },
     }),
 
-    // Bull Queue (Redis)
-    BullModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        redis: {
-          host: configService.get('REDIS_HOST'),
-          port: configService.get<number>('REDIS_PORT'),
-          username: configService.get('REDIS_USERNAME'),
-          password: configService.get('REDIS_PASSWORD'),
-        },
-      }),
-    }),
+    // Bull Queue (Redis) - only if configured
+    ...conditionalImports,
 
     // Redis cache
     RedisModule,
