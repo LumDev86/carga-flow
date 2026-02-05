@@ -20,6 +20,16 @@ const bullImports = isRedisConfigured()
 
 const bullProviders = isRedisConfigured() ? [AssignmentProcessor] : [];
 
+// Provide a null queue token when Redis is not configured
+const queueProvider = isRedisConfigured()
+  ? []
+  : [
+      {
+        provide: 'TRIPS_QUEUE',
+        useValue: null,
+      },
+    ];
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([Trip, User]),
@@ -28,7 +38,7 @@ const bullProviders = isRedisConfigured() ? [AssignmentProcessor] : [];
     GeolocationModule,
   ],
   controllers: [TripsController],
-  providers: [TripsService, ...bullProviders],
+  providers: [TripsService, ...bullProviders, ...queueProvider],
   exports: [TripsService],
 })
 export class TripsModule {}

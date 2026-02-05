@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { getQueueToken } from '@nestjs/bull';
+import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { Trip } from './entities/trip.entity';
 import { User } from '../users/entities/user.entity';
@@ -31,6 +31,7 @@ const ASSIGNMENT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 @Injectable()
 export class TripsService {
   private readonly logger = new Logger(TripsService.name);
+  private readonly tripsQueue: Queue | null = null;
 
   constructor(
     @InjectRepository(Trip)
@@ -40,9 +41,18 @@ export class TripsService {
     private readonly eventsGateway: EventsGateway,
     private readonly geolocationService: GeolocationService,
     @Optional()
-    @Inject(getQueueToken('trips'))
-    private readonly tripsQueue: Queue | null,
-  ) {}
+    @Inject('TRIPS_QUEUE')
+    tripsQueueFallback: Queue | null,
+    @Optional()
+    @InjectQueue('trips')
+    tripsQueueBull?: Queue,
+  ) {
+    // Use Bull queue if available, otherwise use the fallback (null)
+    this.tripsQueue = tripsQueueBull || tripsQueueFallback || null;
+    if (!this.tripsQueue) {
+      this.logger.warn('Redis not configured - assignment timeout jobs disabled');
+    }
+  }
 
   async createTrip(userId: string, dto: CreateTripDto): Promise<Trip> {
     // Calculate route
