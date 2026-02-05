@@ -49,8 +49,9 @@ const conditionalImports = isRedisConfigured()
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       migrationsRun: true,
-      synchronize: process.env.NODE_ENV === 'development',
-      logging: process.env.NODE_ENV === 'development',
+      // Synchronize unless explicitly in production
+      synchronize: process.env.NODE_ENV !== 'production',
+      logging: process.env.NODE_ENV !== 'production',
       ssl: {
         rejectUnauthorized: false,
       },
