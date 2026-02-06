@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  carga-flow-api:
+    build: .
+    container_name: carga-flow-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
