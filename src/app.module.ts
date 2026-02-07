@@ -42,24 +42,31 @@ const conditionalImports = isRedisConfigured()
       envFilePath: '.env',
     }),
 
-    // TypeORM configuration
+    // TypeORM configuration - supports DATABASE_URL or separate DB_* variables
     TypeOrmModule.forRoot({
       type: 'postgres',
-      host: process.env.DB_HOST,
-      port: parseInt(process.env.DB_PORT || '5432', 10),
-      username: process.env.DB_USERNAME,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_DATABASE,
+      // Use DATABASE_URL if available, otherwise use separate variables
+      ...(process.env.DATABASE_URL
+        ? { url: process.env.DATABASE_URL }
+        : {
+            host: process.env.DB_HOST,
+            port: parseInt(process.env.DB_PORT || '5432', 10),
+            username: process.env.DB_USERNAME,
+            password: process.env.DB_PASSWORD,
+            database: process.env.DB_DATABASE,
+          }),
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       migrationsRun: true,
       // Synchronize unless explicitly in production
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV !== 'production',
-      // SSL only if DB_SSL=true
-      ...(process.env.DB_SSL === 'true' && {
-        ssl: { rejectUnauthorized: false },
-      }),
+      // SSL: enabled by default for DATABASE_URL (cloud), disabled for local
+      ssl: process.env.DATABASE_URL
+        ? { rejectUnauthorized: false }
+        : process.env.DB_SSL === 'true'
+          ? { rejectUnauthorized: false }
+          : false,
     }),
 
     // Bull Queue (Redis) - only if configured
