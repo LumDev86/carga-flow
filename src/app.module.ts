@@ -56,9 +56,10 @@ const conditionalImports = isRedisConfigured()
       // Synchronize unless explicitly in production
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV !== 'production',
-      ssl: {
-        rejectUnauthorized: false,
-      },
+      // SSL only if DB_SSL=true
+      ...(process.env.DB_SSL === 'true' && {
+        ssl: { rejectUnauthorized: false },
+      }),
     }),
 
     // Bull Queue (Redis) - only if configured
