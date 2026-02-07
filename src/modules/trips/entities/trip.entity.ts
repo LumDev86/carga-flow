@@ -29,7 +29,7 @@ export class Trip {
   @JoinColumn({ name: 'driver_id' })
   driver: User | null;
 
-  @Column({ name: 'driver_id', nullable: true })
+  @Column({ name: 'driver_id', type: 'uuid', nullable: true })
   driverId: string | null;
 
   // --- Estado ---
@@ -50,10 +50,10 @@ export class Trip {
   @Column({ name: 'origin_lng', type: 'decimal', precision: 10, scale: 7 })
   originLng: number;
 
-  @Column({ name: 'origin_city', nullable: true })
+  @Column({ name: 'origin_city', type: 'varchar', nullable: true })
   originCity: string | null;
 
-  @Column({ name: 'origin_state', nullable: true })
+  @Column({ name: 'origin_state', type: 'varchar', nullable: true })
   originState: string | null;
 
   // --- Destino ---
@@ -66,10 +66,10 @@ export class Trip {
   @Column({ name: 'destination_lng', type: 'decimal', precision: 10, scale: 7 })
   destinationLng: number;
 
-  @Column({ name: 'destination_city', nullable: true })
+  @Column({ name: 'destination_city', type: 'varchar', nullable: true })
   destinationCity: string | null;
 
-  @Column({ name: 'destination_state', nullable: true })
+  @Column({ name: 'destination_state', type: 'varchar', nullable: true })
   destinationState: string | null;
 
   // --- Carga ---
@@ -95,7 +95,7 @@ export class Trip {
   @Column({ name: 'cargo_weight', type: 'decimal', precision: 10, scale: 2, nullable: true })
   cargoWeight: number | null;
 
-  @Column({ name: 'cargo_weight_unit', nullable: true, default: 'kg' })
+  @Column({ name: 'cargo_weight_unit', type: 'varchar', nullable: true, default: 'kg' })
   cargoWeightUnit: string | null;
 
   @Column({ name: 'cargo_pallets', nullable: true, type: 'int' })
@@ -111,7 +111,7 @@ export class Trip {
   @Column({ name: 'distance_km', type: 'decimal', precision: 10, scale: 2, nullable: true })
   distanceKm: number | null;
 
-  @Column({ name: 'estimated_duration', nullable: true })
+  @Column({ name: 'estimated_duration', type: 'varchar', nullable: true })
   estimatedDuration: string | null;
 
   @Column({ name: 'price', type: 'decimal', precision: 10, scale: 2 })
@@ -131,7 +131,7 @@ export class Trip {
   estimatedDeliveryAt: Date | null;
 
   // --- Assignment tracking ---
-  @Column({ name: 'assigned_driver_id', nullable: true })
+  @Column({ name: 'assigned_driver_id', type: 'uuid', nullable: true })
   assignedDriverId: string | null;
 
   @Column({ name: 'assignment_expires_at', type: 'timestamp', nullable: true })
@@ -154,10 +154,10 @@ export class Trip {
   cancelledAt: Date | null;
 
   // --- Evidencia ---
-  @Column({ name: 'remito_url', nullable: true })
+  @Column({ name: 'remito_url', type: 'varchar', nullable: true })
   remitoUrl: string | null;
 
-  @Column({ name: 'cargo_photo_url', nullable: true })
+  @Column({ name: 'cargo_photo_url', type: 'varchar', nullable: true })
   cargoPhotoUrl: string | null;
 
   @Column({ name: 'observations', nullable: true, type: 'text' })

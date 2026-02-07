@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { GeolocationModule } from './modules/geolocation/geolocation.module';
@@ -42,32 +42,8 @@ const conditionalImports = isRedisConfigured()
       envFilePath: '.env',
     }),
 
-    // TypeORM configuration - supports DATABASE_URL or separate DB_* variables
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      // Use DATABASE_URL if available, otherwise use separate variables
-      ...(process.env.DATABASE_URL
-        ? { url: process.env.DATABASE_URL }
-        : {
-            host: process.env.DB_HOST,
-            port: parseInt(process.env.DB_PORT || '5432', 10),
-            username: process.env.DB_USERNAME,
-            password: process.env.DB_PASSWORD,
-            database: process.env.DB_DATABASE,
-          }),
-      entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      migrations: [__dirname + '/migrations/*{.ts,.js}'],
-      migrationsRun: true,
-      // Synchronize unless explicitly in production
-      synchronize: process.env.NODE_ENV !== 'production',
-      logging: process.env.NODE_ENV !== 'production',
-      // SSL: enabled by default for DATABASE_URL (cloud), disabled for local
-      ssl: process.env.DATABASE_URL
-        ? { rejectUnauthorized: false }
-        : process.env.DB_SSL === 'true'
-          ? { rejectUnauthorized: false }
-          : false,
-    }),
+    // Database (TypeORM + PostgreSQL)
+    DatabaseModule,
 
     // Bull Queue (Redis) - only if configured
     ...conditionalImports,
