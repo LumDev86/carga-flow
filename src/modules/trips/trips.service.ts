@@ -55,6 +55,12 @@ export class TripsService {
   }
 
   async createTrip(userId: string, dto: CreateTripDto): Promise<Trip> {
+    this.logger.log(`Creating trip for user: ${userId}`);
+
+    if (!userId) {
+      throw new BadRequestException('userId is required to create a trip');
+    }
+
     // Calculate route
     const directions = await this.geolocationService.getDirections(
       dto.originLat,
@@ -73,6 +79,7 @@ export class TripsService {
 
     // Create trip
     const trip = this.tripRepository.create({
+      requesterId: userId,
       requester: { id: userId } as User,
       originAddress: dto.originAddress,
       originLat: dto.originLat,
@@ -100,6 +107,8 @@ export class TripsService {
       scheduledPickupAt: dto.scheduledPickupAt ? new Date(dto.scheduledPickupAt) : null,
       status: TripStatus.PENDING,
     });
+
+    this.logger.log(`Trip entity created, requesterId: ${trip.requesterId}, requester.id: ${trip.requester?.id}`);
 
     const savedTrip = await this.tripRepository.save(trip);
 
