@@ -163,34 +163,51 @@ export class TripsService {
     return result!;
   }
 
-  async findNearestDriver(lat: number, lng: number): Promise<User | null> {
-    // Haversine formula in SQL to find nearest driver
-    const drivers = await this.userRepository
-      .createQueryBuilder('user')
-      .where('user.rol = :role', { role: UserRole.CHOFER })
-      .andWhere('user.estado = :status', { status: UserStatus.VERIFIED })
-      .andWhere('user.latitude IS NOT NULL')
-      .andWhere('user.longitude IS NOT NULL')
-      .andWhere(
-        // No active trips
-        `user.id NOT IN (
-          SELECT t.driver_id FROM trips t
-          WHERE t.driver_id IS NOT NULL
-          AND t.status IN (:...activeStatuses)
-        )`,
-        { activeStatuses: [TripStatus.ACCEPTED, TripStatus.IN_TRANSIT] },
-      )
-      .addSelect(
-        `(6371 * acos(cos(radians(:lat)) * cos(radians(user.latitude)) * cos(radians(user.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(user.latitude))))`,
-        'distance',
-      )
-      .setParameter('lat', lat)
-      .setParameter('lng', lng)
-      .orderBy('distance', 'ASC')
-      .limit(1)
-      .getOne();
+  // Radios de búsqueda incremental en km
+  private static readonly SEARCH_RADII_KM = [10, 25, 50, 100];
 
-    return drivers || null;
+  async findNearestDriver(lat: number, lng: number): Promise<User | null> {
+    // Búsqueda incremental por radio: 10km → 25km → 50km → 100km
+    for (const radiusKm of TripsService.SEARCH_RADII_KM) {
+      this.logger.log(`Searching for driver within ${radiusKm}km radius`);
+
+      const driver = await this.userRepository
+        .createQueryBuilder('user')
+        .where('user.rol = :role', { role: UserRole.CHOFER })
+        .andWhere('user.estado = :status', { status: UserStatus.VERIFIED })
+        .andWhere('user.latitude IS NOT NULL')
+        .andWhere('user.longitude IS NOT NULL')
+        .andWhere(
+          // No active trips
+          `user.id NOT IN (
+            SELECT t.driver_id FROM trips t
+            WHERE t.driver_id IS NOT NULL
+            AND t.status IN (:...activeStatuses)
+          )`,
+          { activeStatuses: [TripStatus.ACCEPTED, TripStatus.IN_TRANSIT] },
+        )
+        .addSelect(
+          `(6371 * acos(cos(radians(:lat)) * cos(radians(user.latitude)) * cos(radians(user.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(user.latitude))))`,
+          'distance',
+        )
+        .andWhere(
+          `(6371 * acos(cos(radians(:lat)) * cos(radians(user.latitude)) * cos(radians(user.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(user.latitude)))) <= :radius`,
+          { radius: radiusKm },
+        )
+        .setParameter('lat', lat)
+        .setParameter('lng', lng)
+        .orderBy('distance', 'ASC')
+        .limit(1)
+        .getOne();
+
+      if (driver) {
+        this.logger.log(`Driver found within ${radiusKm}km radius`);
+        return driver;
+      }
+    }
+
+    this.logger.log('No driver found in any search radius');
+    return null;
   }
 
   async getMyTrips(userId: string, filters?: TripFiltersDto): Promise<Trip[]> {
