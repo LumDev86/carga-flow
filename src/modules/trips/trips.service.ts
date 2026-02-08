@@ -126,6 +126,10 @@ export class TripsService {
       // Emit to assigned driver
       this.eventsGateway.emitToDriver(nearestDriver.id, 'trip:assigned', savedTrip);
 
+      // Notify requester that a driver was assigned
+      this.eventsGateway.emitToUser(userId, 'trip:assigned', savedTrip);
+      this.eventsGateway.emitTripUpdate(savedTrip.id, 'trip:assigned', savedTrip);
+
       // Schedule timeout job (if queue is available)
       if (this.tripsQueue) {
         await this.tripsQueue.add(
@@ -143,6 +147,11 @@ export class TripsService {
       await this.tripRepository.save(savedTrip);
 
       this.eventsGateway.emitToAllDrivers('trip:broadcast', savedTrip);
+
+      // Notify requester that trip is being broadcast
+      this.eventsGateway.emitToUser(userId, 'trip:broadcast', savedTrip);
+      this.eventsGateway.emitTripUpdate(savedTrip.id, 'trip:broadcast', savedTrip);
+
       this.logger.log(`Trip ${savedTrip.id} broadcasted to all drivers`);
     }
 
@@ -365,6 +374,10 @@ export class TripsService {
     this.eventsGateway.emitToAllDrivers('trip:broadcast', savedTrip);
     // Notify the driver that their assignment expired
     this.eventsGateway.emitToDriver(driverId, 'trip:assignment_expired', savedTrip);
+
+    // Notify requester that trip is now broadcast
+    this.eventsGateway.emitToUser(trip.requesterId, 'trip:broadcast', savedTrip);
+    this.eventsGateway.emitTripUpdate(tripId, 'trip:broadcast', savedTrip);
 
     this.logger.log(`Trip ${tripId} rejected by driver ${driverId}, now broadcast`);
 
@@ -604,6 +617,10 @@ export class TripsService {
 
     // Broadcast to all drivers
     this.eventsGateway.emitToAllDrivers('trip:broadcast', savedTrip);
+
+    // Notify requester that trip is now broadcast
+    this.eventsGateway.emitToUser(trip.requesterId, 'trip:broadcast', savedTrip);
+    this.eventsGateway.emitTripUpdate(tripId, 'trip:broadcast', savedTrip);
 
     this.logger.log(`Trip ${tripId} assignment expired, now broadcast`);
   }
