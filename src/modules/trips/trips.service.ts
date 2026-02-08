@@ -23,6 +23,7 @@ import { UpdateLocationDto } from './dto/update-location.dto';
 import { TripStatus } from '../../shared/enums/trip-status.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { UserStatus } from '../../shared/enums/user-status.enum';
+import * as bcrypt from 'bcrypt';
 
 const BASE_PRICE_PER_KM = 50;
 const COMMISSION_RATE = 0.15;
@@ -640,5 +641,132 @@ export class TripsService {
     this.eventsGateway.emitTripUpdate(tripId, 'trip:broadcast', savedTrip);
 
     this.logger.log(`Trip ${tripId} assignment expired, now broadcast`);
+  }
+
+  // ==================== TEST HELPERS ====================
+
+  private static readonly TEST_DRIVERS = [
+    {
+      email: 'chofer1@test.com',
+      firstName: 'Carlos',
+      lastName: 'Rodríguez',
+      phone: '+5491111111111',
+      latitude: -34.8400,
+      longitude: -58.5100,
+      address: 'Lanús, Buenos Aires',
+      dni: '30111111',
+      cuit: '20301111119',
+    },
+    {
+      email: 'chofer2@test.com',
+      firstName: 'Miguel',
+      lastName: 'Fernández',
+      phone: '+5491122222222',
+      latitude: -34.7700,
+      longitude: -58.4400,
+      address: 'Lomas de Zamora, Buenos Aires',
+      dni: '31222222',
+      cuit: '20312222229',
+    },
+    {
+      email: 'chofer3@test.com',
+      firstName: 'Roberto',
+      lastName: 'González',
+      phone: '+5491133333333',
+      latitude: -34.6600,
+      longitude: -58.3650,
+      address: 'Avellaneda, Buenos Aires',
+      dni: '32333333',
+      cuit: '20323333339',
+    },
+    {
+      email: 'chofer4@test.com',
+      firstName: 'Jorge',
+      lastName: 'Martínez',
+      phone: '+5491144444444',
+      latitude: -34.7200,
+      longitude: -58.2600,
+      address: 'Quilmes, Buenos Aires',
+      dni: '33444444',
+      cuit: '20334444449',
+    },
+    {
+      email: 'chofer5@test.com',
+      firstName: 'Alejandro',
+      lastName: 'López',
+      phone: '+5491155555555',
+      latitude: -34.8550,
+      longitude: -58.3200,
+      address: 'Ezeiza, Buenos Aires',
+      dni: '34555555',
+      cuit: '20345555559',
+    },
+  ];
+
+  async seedTestDrivers(): Promise<{ created: number; updated: number; drivers: any[] }> {
+    this.logger.log('Seeding test drivers...');
+    const hashedPassword = await bcrypt.hash('Test1234', 10);
+    let created = 0;
+    let updated = 0;
+
+    for (const driverData of TripsService.TEST_DRIVERS) {
+      const existing = await this.userRepository.findOne({
+        where: { email: driverData.email },
+      });
+
+      if (existing) {
+        existing.latitude = driverData.latitude;
+        existing.longitude = driverData.longitude;
+        existing.address = driverData.address;
+        existing.estado = UserStatus.VERIFIED;
+        existing.rol = UserRole.CHOFER;
+        existing.firstName = driverData.firstName;
+        existing.lastName = driverData.lastName;
+        await this.userRepository.save(existing);
+        updated++;
+      } else {
+        const user = this.userRepository.create({
+          email: driverData.email,
+          password: hashedPassword,
+          phone: driverData.phone,
+          firstName: driverData.firstName,
+          lastName: driverData.lastName,
+          rol: UserRole.CHOFER,
+          estado: UserStatus.VERIFIED,
+          latitude: driverData.latitude,
+          longitude: driverData.longitude,
+          address: driverData.address,
+          dni: driverData.dni,
+          cuit: driverData.cuit,
+          emailVerified: true,
+          phoneVerified: true,
+        });
+        await this.userRepository.save(user);
+        created++;
+      }
+    }
+
+    // Retornar conductores disponibles
+    const drivers = await this.userRepository
+      .createQueryBuilder('user')
+      .select(['user.id', 'user.email', 'user.firstName', 'user.lastName', 'user.latitude', 'user.longitude', 'user.address', 'user.estado'])
+      .where('user.rol = :role', { role: UserRole.CHOFER })
+      .andWhere('user.estado = :status', { status: UserStatus.VERIFIED })
+      .orderBy('user.email', 'ASC')
+      .getMany();
+
+    this.logger.log(`Seed completed: ${created} created, ${updated} updated. Total verified drivers: ${drivers.length}`);
+
+    return {
+      created,
+      updated,
+      drivers: drivers.map((d) => ({
+        id: d.id,
+        email: d.email,
+        name: `${d.firstName} ${d.lastName}`,
+        location: `${d.latitude}, ${d.longitude}`,
+        address: d.address,
+      })),
+    };
   }
 }

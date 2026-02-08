@@ -64,6 +64,12 @@ export class TripsController {
     return this.tripsService.getTripStats(userId);
   }
 
+  @Post('test/seed-drivers')
+  @ApiOperation({ summary: '[TEST] Crear/resetear conductores de prueba' })
+  seedDrivers() {
+    return this.tripsService.seedTestDrivers();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Detalle de un viaje' })
   findOne(@CurrentUser('id') userId: string, @Param('id') id: string) {
