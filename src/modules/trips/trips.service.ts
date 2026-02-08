@@ -175,7 +175,7 @@ export class TripsService {
       const driver = await this.userRepository
         .createQueryBuilder('user')
         .where('user.rol = :role', { role: UserRole.CHOFER })
-        .andWhere('user.estado = :status', { status: UserStatus.VERIFIED })
+        .andWhere('user.estado != :banned', { banned: UserStatus.BANNED })
         .andWhere('user.latitude IS NOT NULL')
         .andWhere('user.longitude IS NOT NULL')
         .andWhere(
@@ -751,11 +751,11 @@ export class TripsService {
       .createQueryBuilder('user')
       .select(['user.id', 'user.email', 'user.firstName', 'user.lastName', 'user.latitude', 'user.longitude', 'user.address', 'user.estado'])
       .where('user.rol = :role', { role: UserRole.CHOFER })
-      .andWhere('user.estado = :status', { status: UserStatus.VERIFIED })
+      .andWhere('user.estado != :banned', { banned: UserStatus.BANNED })
       .orderBy('user.email', 'ASC')
       .getMany();
 
-    this.logger.log(`Seed completed: ${created} created, ${updated} updated. Total verified drivers: ${drivers.length}`);
+    this.logger.log(`Seed completed: ${created} created, ${updated} updated. Total available drivers: ${drivers.length}`);
 
     return {
       created,
