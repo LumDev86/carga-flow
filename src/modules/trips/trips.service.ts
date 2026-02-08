@@ -73,7 +73,7 @@ export class TripsService {
 
     // Create trip
     const trip = this.tripRepository.create({
-      requesterId: userId,
+      requester: { id: userId } as User,
       originAddress: dto.originAddress,
       originLat: dto.originLat,
       originLng: dto.originLng,
@@ -109,7 +109,7 @@ export class TripsService {
     if (nearestDriver) {
       // Assign to nearest driver
       savedTrip.status = TripStatus.ASSIGNED;
-      savedTrip.driverId = nearestDriver.id;
+      savedTrip.driver = nearestDriver;
       savedTrip.assignedDriverId = nearestDriver.id;
       savedTrip.assignmentExpiresAt = new Date(Date.now() + ASSIGNMENT_TIMEOUT_MS);
       await this.tripRepository.save(savedTrip);
@@ -284,7 +284,7 @@ export class TripsService {
       }
 
       trip.status = TripStatus.ACCEPTED;
-      trip.driverId = driverId;
+      trip.driver = { id: driverId } as User;
       trip.acceptedAt = new Date();
 
       const savedTrip = await manager.save(trip);
@@ -335,7 +335,7 @@ export class TripsService {
 
     // Broadcast to all drivers
     trip.status = TripStatus.BROADCAST;
-    trip.driverId = null;
+    trip.driver = null;
     trip.assignedDriverId = null;
     trip.assignmentExpiresAt = null;
     trip.broadcastAt = new Date();
@@ -577,7 +577,7 @@ export class TripsService {
     const previousDriverId = trip.driverId;
 
     trip.status = TripStatus.BROADCAST;
-    trip.driverId = null;
+    trip.driver = null;
     trip.assignedDriverId = null;
     trip.assignmentExpiresAt = null;
     trip.broadcastAt = new Date();
