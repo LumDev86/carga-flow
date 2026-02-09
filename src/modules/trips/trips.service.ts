@@ -303,62 +303,59 @@ export class TripsService {
   }
 
   async acceptTrip(tripId: string, driverId: string): Promise<Trip> {
-    // Use transaction with locking to prevent race conditions
-    return this.tripRepository.manager.transaction(async (manager) => {
-      const trip = await manager.findOne(Trip, {
-        where: { id: tripId },
-        lock: { mode: 'pessimistic_write' },
-      });
-
-      if (!trip) {
-        throw new NotFoundException('Viaje no encontrado');
-      }
-
-      // Validate state transition
-      if (trip.status === TripStatus.ASSIGNED) {
-        if (trip.assignedDriverId !== driverId) {
-          throw new ForbiddenException('Este viaje no está asignado a ti');
-        }
-      } else if (trip.status !== TripStatus.BROADCAST) {
-        throw new BadRequestException(
-          `No se puede aceptar un viaje en estado ${trip.status}`,
-        );
-      }
-
-      trip.status = TripStatus.ACCEPTED;
-      trip.driver = { id: driverId } as User;
-      trip.acceptedAt = new Date();
-
-      const savedTrip = await manager.save(trip);
-
-      // Remove timeout job if exists
-      if (this.tripsQueue) {
-        try {
-          const job = await this.tripsQueue.getJob(`assignment-${tripId}`);
-          if (job) await job.remove();
-        } catch (e) {
-          // Job may not exist
-        }
-      }
-
-      // Reload with relations
-      const fullTrip = await manager.findOne(Trip, {
-        where: { id: savedTrip.id },
-        relations: ['requester', 'driver'],
-      });
-
-      if (!fullTrip) {
-        throw new NotFoundException('Error al cargar viaje');
-      }
-
-      // Notify requester
-      this.eventsGateway.emitToUser(fullTrip.requesterId, 'trip:accepted', fullTrip);
-      this.eventsGateway.emitTripUpdate(tripId, 'trip:accepted', fullTrip);
-
-      this.logger.log(`Trip ${tripId} accepted by driver ${driverId}`);
-
-      return fullTrip;
+    const trip = await this.tripRepository.findOne({
+      where: { id: tripId },
+      relations: ['requester', 'driver'],
     });
+
+    if (!trip) {
+      throw new NotFoundException('Viaje no encontrado');
+    }
+
+    // Validate state transition
+    if (trip.status === TripStatus.ASSIGNED) {
+      if (trip.assignedDriverId !== driverId) {
+        throw new ForbiddenException('Este viaje no está asignado a ti');
+      }
+    } else if (trip.status !== TripStatus.BROADCAST) {
+      throw new BadRequestException(
+        `No se puede aceptar un viaje en estado ${trip.status}`,
+      );
+    }
+
+    trip.status = TripStatus.ACCEPTED;
+    trip.driverId = driverId;
+    trip.acceptedAt = new Date();
+
+    await this.tripRepository.save(trip);
+
+    // Remove timeout job if exists
+    if (this.tripsQueue) {
+      try {
+        const job = await this.tripsQueue.getJob(`assignment-${tripId}`);
+        if (job) await job.remove();
+      } catch (e) {
+        // Job may not exist
+      }
+    }
+
+    // Reload with relations
+    const fullTrip = await this.tripRepository.findOne({
+      where: { id: tripId },
+      relations: ['requester', 'driver'],
+    });
+
+    if (!fullTrip) {
+      throw new NotFoundException('Error al cargar viaje');
+    }
+
+    // Notify requester
+    this.eventsGateway.emitToUser(fullTrip.requesterId, 'trip:accepted', fullTrip);
+    this.eventsGateway.emitTripUpdate(tripId, 'trip:accepted', fullTrip);
+
+    this.logger.log(`Trip ${tripId} accepted by driver ${driverId}`);
+
+    return fullTrip;
   }
 
   async rejectTrip(tripId: string, driverId: string): Promise<Trip> {
@@ -722,6 +719,25 @@ export class TripsService {
       cuit: '20345555559',
     },
   ];
+
+  async cleanupTestTrips(): Promise<{ deleted: number }> {
+    const result = await this.tripRepository.delete({
+      status: TripStatus.BROADCAST,
+    });
+
+    const resultPending = await this.tripRepository.delete({
+      status: TripStatus.PENDING,
+    });
+
+    const resultAssigned = await this.tripRepository.delete({
+      status: TripStatus.ASSIGNED,
+    });
+
+    const total = (result.affected || 0) + (resultPending.affected || 0) + (resultAssigned.affected || 0);
+    this.logger.log(`Cleanup: ${total} test trips deleted`);
+
+    return { deleted: total };
+  }
 
   async seedTestDrivers(): Promise<{ created: number; updated: number; drivers: any[] }> {
     this.logger.log('Seeding test drivers...');

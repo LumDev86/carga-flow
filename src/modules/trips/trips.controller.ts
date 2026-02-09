@@ -20,6 +20,7 @@ import { TripFiltersDto } from './dto/trip-filters.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('Trips')
 @ApiBearerAuth('JWT-auth')
@@ -68,6 +69,13 @@ export class TripsController {
   @ApiOperation({ summary: '[TEST] Crear/resetear conductores de prueba' })
   seedDrivers() {
     return this.tripsService.seedTestDrivers();
+  }
+
+  @Public()
+  @Post('test/cleanup-trips')
+  @ApiOperation({ summary: '[TEST] Eliminar trips en PENDING/ASSIGNED/BROADCAST' })
+  cleanupTrips() {
+    return this.tripsService.cleanupTestTrips();
   }
 
   @Get(':id')
