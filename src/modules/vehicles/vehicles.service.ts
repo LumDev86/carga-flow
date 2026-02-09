@@ -3,9 +3,12 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Inject,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { Vehicle } from './entities/vehicle.entity';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
@@ -13,16 +16,23 @@ import { StorageService } from '../../common/storage/storage.service';
 
 type DocumentField = 'insurancePhotoUrl' | 'licenseFrontUrl' | 'licenseBackUrl';
 
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const cacheKey = (userId: string) => `vehicles:user:${userId}`;
+
 @Injectable()
 export class VehiclesService {
   constructor(
     @InjectRepository(Vehicle)
     private readonly vehicleRepository: Repository<Vehicle>,
     private readonly storageService: StorageService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
+  private async invalidateCache(userId: string): Promise<void> {
+    await this.cacheManager.del(cacheKey(userId));
+  }
+
   async create(userId: string, dto: CreateVehicleDto): Promise<Vehicle> {
-    // Check if plate already exists
     const existing = await this.vehicleRepository.findOne({
       where: { plate: dto.plate },
     });
@@ -35,14 +45,23 @@ export class VehiclesService {
       userId,
     });
 
-    return this.vehicleRepository.save(vehicle);
+    const saved = await this.vehicleRepository.save(vehicle);
+    await this.invalidateCache(userId);
+    return saved;
   }
 
   async findMyVehicles(userId: string): Promise<Vehicle[]> {
-    return this.vehicleRepository.find({
+    // Check cache first
+    const cached = await this.cacheManager.get<Vehicle[]>(cacheKey(userId));
+    if (cached) return cached;
+
+    const vehicles = await this.vehicleRepository.find({
       where: { userId },
       order: { isActive: 'DESC', createdAt: 'DESC' },
     });
+
+    await this.cacheManager.set(cacheKey(userId), vehicles, CACHE_TTL);
+    return vehicles;
   }
 
   async findOne(id: string, userId: string): Promise<Vehicle> {
@@ -68,7 +87,6 @@ export class VehiclesService {
   ): Promise<Vehicle> {
     const vehicle = await this.findOne(id, userId);
 
-    // If plate is being changed, check uniqueness
     if (dto.plate && dto.plate !== vehicle.plate) {
       const existing = await this.vehicleRepository.findOne({
         where: { plate: dto.plate },
@@ -79,12 +97,15 @@ export class VehiclesService {
     }
 
     Object.assign(vehicle, dto);
-    return this.vehicleRepository.save(vehicle);
+    const saved = await this.vehicleRepository.save(vehicle);
+    await this.invalidateCache(userId);
+    return saved;
   }
 
   async remove(id: string, userId: string): Promise<void> {
     const vehicle = await this.findOne(id, userId);
     await this.vehicleRepository.remove(vehicle);
+    await this.invalidateCache(userId);
   }
 
   async uploadDocument(
@@ -95,7 +116,6 @@ export class VehiclesService {
   ): Promise<Vehicle> {
     const vehicle = await this.findOne(vehicleId, userId);
 
-    // Delete old file if exists
     if (vehicle[field]) {
       await this.storageService.deleteFile(vehicle[field]).catch(() => {});
     }
@@ -104,19 +124,21 @@ export class VehiclesService {
     const url = await this.storageService.uploadFile(file, folder);
 
     vehicle[field] = url;
-    return this.vehicleRepository.save(vehicle);
+    const saved = await this.vehicleRepository.save(vehicle);
+    await this.invalidateCache(userId);
+    return saved;
   }
 
   async setActive(id: string, userId: string): Promise<Vehicle> {
-    // Deactivate all user vehicles
     await this.vehicleRepository.update(
       { userId },
       { isActive: false },
     );
 
-    // Activate the selected one
     const vehicle = await this.findOne(id, userId);
     vehicle.isActive = true;
-    return this.vehicleRepository.save(vehicle);
+    const saved = await this.vehicleRepository.save(vehicle);
+    await this.invalidateCache(userId);
+    return saved;
   }
 }
