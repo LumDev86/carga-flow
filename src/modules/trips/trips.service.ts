@@ -179,6 +179,12 @@ export class TripsService {
         .andWhere('user.latitude IS NOT NULL')
         .andWhere('user.longitude IS NOT NULL')
         .andWhere(
+          // Must have at least one registered vehicle
+          `user.id IN (
+            SELECT v.user_id FROM vehicles v WHERE v.is_active = true
+          )`,
+        )
+        .andWhere(
           // No active trips
           `user.id NOT IN (
             SELECT t.driver_id FROM trips t

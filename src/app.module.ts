@@ -8,8 +8,10 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { GeolocationModule } from './modules/geolocation/geolocation.module';
 import { RedisModule } from './common/cache/redis.module';
+import { StorageModule } from './common/storage/storage.module';
 import { EventsModule } from './modules/events/events.module';
 import { TripsModule } from './modules/trips/trips.module';
+import { VehiclesModule } from './modules/vehicles/vehicles.module';
 
 // Check if Redis is configured
 const isRedisConfigured = () => {
@@ -51,12 +53,16 @@ const conditionalImports = isRedisConfigured()
     // Redis cache
     RedisModule,
 
+    // Supabase Storage
+    StorageModule,
+
     // Feature modules
     AuthModule,
     UsersModule,
     GeolocationModule,
     EventsModule,
     TripsModule,
+    VehiclesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

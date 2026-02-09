@@ -11,6 +11,7 @@ import { UserRole } from '../../../shared/enums/user-role.enum';
 import { UserStatus } from '../../../shared/enums/user-status.enum';
 import { AccountType } from '../../../shared/enums/account-type.enum';
 import { RefreshToken } from './refresh-token.entity';
+import { Vehicle } from '../../vehicles/entities/vehicle.entity';
 
 @Entity('users')
 export class User {
@@ -170,6 +171,9 @@ export class User {
 
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens: RefreshToken[];
+
+  @OneToMany(() => Vehicle, (vehicle) => vehicle.user)
+  vehicles: Vehicle[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
