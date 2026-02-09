@@ -105,7 +105,7 @@ export class TripsController {
   }
 
   @Patch(':id/cancel')
-  @ApiOperation({ summary: 'Cancelar viaje (solicitante)' })
+  @ApiOperation({ summary: 'Cancelar viaje (solicitante o chofer)' })
   cancel(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.tripsService.cancelTrip(id, userId);
   }

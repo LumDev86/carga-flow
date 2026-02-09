@@ -493,18 +493,30 @@ export class TripsService {
       throw new NotFoundException('Viaje no encontrado');
     }
 
-    if (trip.requesterId !== userId) {
-      throw new ForbiddenException('Solo el solicitante puede cancelar el viaje');
+    const isRequester = trip.requesterId === userId;
+    const isDriver = trip.driverId === userId;
+
+    if (!isRequester && !isDriver) {
+      throw new ForbiddenException('No tienes permiso para cancelar este viaje');
     }
 
-    const cancellableStatuses = [
+    // Statuses the requester can cancel
+    const requesterCancellable = [
       TripStatus.PENDING,
       TripStatus.ASSIGNED,
       TripStatus.BROADCAST,
       TripStatus.ACCEPTED,
     ];
 
-    if (!cancellableStatuses.includes(trip.status)) {
+    // Statuses the driver can cancel
+    const driverCancellable = [
+      TripStatus.ACCEPTED,
+      TripStatus.IN_TRANSIT,
+    ];
+
+    const allowedStatuses = isRequester ? requesterCancellable : driverCancellable;
+
+    if (!allowedStatuses.includes(trip.status)) {
       throw new BadRequestException(
         `No se puede cancelar un viaje en estado ${trip.status}`,
       );
@@ -526,8 +538,10 @@ export class TripsService {
       } catch (e) {}
     }
 
-    // Notify driver if assigned
-    if (previousDriverId) {
+    // Notify the other party
+    if (isDriver) {
+      this.eventsGateway.emitToUser(trip.requesterId, 'trip:cancelled', savedTrip);
+    } else if (previousDriverId) {
       this.eventsGateway.emitToDriver(previousDriverId, 'trip:cancelled', savedTrip);
     }
 
@@ -538,7 +552,7 @@ export class TripsService {
 
     this.eventsGateway.emitTripUpdate(tripId, 'trip:cancelled', savedTrip);
 
-    this.logger.log(`Trip ${tripId} cancelled by user ${userId}`);
+    this.logger.log(`Trip ${tripId} cancelled by ${isDriver ? 'driver' : 'requester'} ${userId}`);
 
     return savedTrip;
   }
