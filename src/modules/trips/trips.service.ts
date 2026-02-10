@@ -277,6 +277,33 @@ export class TripsService {
       .where('(trip.requester_id = :userId OR trip.driver_id = :userId)', { userId })
       .getMany();
 
+    // Earnings calculation for driver (uses Argentina timezone UTC-3)
+    const now = new Date();
+    const argentinaOffset = -3 * 60; // UTC-3 in minutes
+    const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+    const argNow = new Date(utcMs + argentinaOffset * 60000);
+    const todayStart = new Date(argNow);
+    todayStart.setHours(0, 0, 0, 0);
+    // Convert back to UTC for DB comparison
+    const todayStartUtc = new Date(todayStart.getTime() - argentinaOffset * 60000);
+
+    const earningsResult = await this.tripRepository
+      .createQueryBuilder('trip')
+      .select('COALESCE(SUM(trip.driver_payout), 0)', 'totalEarnings')
+      .addSelect('COUNT(trip.id)', 'totalDelivered')
+      .where('trip.driver_id = :userId', { userId })
+      .andWhere('trip.status = :status', { status: TripStatus.DELIVERED })
+      .getRawOne();
+
+    const todayResult = await this.tripRepository
+      .createQueryBuilder('trip')
+      .select('COALESCE(SUM(trip.driver_payout), 0)', 'earningsToday')
+      .addSelect('COUNT(trip.id)', 'tripsToday')
+      .where('trip.driver_id = :userId', { userId })
+      .andWhere('trip.status = :status', { status: TripStatus.DELIVERED })
+      .andWhere('trip.delivered_at >= :todayStart', { todayStart: todayStartUtc })
+      .getRawOne();
+
     return {
       total: trips.length,
       pending: trips.filter((t) => t.status === TripStatus.PENDING).length,
@@ -286,6 +313,10 @@ export class TripsService {
       inTransit: trips.filter((t) => t.status === TripStatus.IN_TRANSIT).length,
       delivered: trips.filter((t) => t.status === TripStatus.DELIVERED).length,
       cancelled: trips.filter((t) => t.status === TripStatus.CANCELLED).length,
+      earningsToday: parseFloat(todayResult?.earningsToday) || 0,
+      tripsToday: parseInt(todayResult?.tripsToday) || 0,
+      totalEarnings: parseFloat(earningsResult?.totalEarnings) || 0,
+      totalDelivered: parseInt(earningsResult?.totalDelivered) || 0,
     };
   }
 
