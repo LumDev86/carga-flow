@@ -25,7 +25,13 @@ import { UserRole } from '../../shared/enums/user-role.enum';
 import { UserStatus } from '../../shared/enums/user-status.enum';
 import * as bcrypt from 'bcrypt';
 
-const BASE_PRICE_PER_KM = 50;
+const PRICE_PER_KM: Record<string, number> = {
+  SEMI_REMOLQUE: 80,
+  CAMION: 50,
+  CAMIONETA: 40,
+  AUTO: 30,
+  MOTO: 20,
+};
 const COMMISSION_RATE = 0.15;
 const ASSIGNMENT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -73,8 +79,9 @@ export class TripsService {
     const distanceKm = directions?.distance || 0;
     const estimatedDuration = directions?.durationText || null;
 
-    // Calculate pricing
-    const price = Math.round(distanceKm * BASE_PRICE_PER_KM);
+    // Calculate pricing based on transport type
+    const pricePerKm = (dto.transportType && PRICE_PER_KM[dto.transportType]) || 50;
+    const price = Math.round(distanceKm * pricePerKm);
     const commission = Math.round(price * COMMISSION_RATE);
     const driverPayout = price - commission;
 
@@ -317,6 +324,44 @@ export class TripsService {
       tripsToday: parseInt(todayResult?.tripsToday) || 0,
       totalEarnings: parseFloat(earningsResult?.totalEarnings) || 0,
       totalDelivered: parseInt(earningsResult?.totalDelivered) || 0,
+    };
+  }
+
+  async getMyReviews(driverId: string) {
+    const trips = await this.tripRepository
+      .createQueryBuilder('trip')
+      .leftJoinAndSelect('trip.requester', 'requester')
+      .where('trip.driver_id = :driverId', { driverId })
+      .andWhere('trip.status = :status', { status: TripStatus.DELIVERED })
+      .andWhere('trip.rating IS NOT NULL')
+      .orderBy('trip.delivered_at', 'DESC')
+      .getMany();
+
+    const ratings = trips.map((t) => t.rating!);
+    const averageRating =
+      ratings.length > 0
+        ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length
+        : 0;
+
+    const ratingCounts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    for (const r of ratings) {
+      ratingCounts[r] = (ratingCounts[r] || 0) + 1;
+    }
+
+    return {
+      averageRating: Math.round(averageRating * 100) / 100,
+      totalReviews: trips.length,
+      ratingCounts,
+      reviews: trips.map((t) => ({
+        id: t.id,
+        rating: t.rating,
+        comments: t.ratingComments,
+        deliveredAt: t.deliveredAt,
+        requesterName: t.requester
+          ? `${t.requester.firstName} ${t.requester.lastName}`.trim()
+          : 'Usuario',
+        route: `${t.originAddress} → ${t.destinationAddress}`,
+      })),
     };
   }
 

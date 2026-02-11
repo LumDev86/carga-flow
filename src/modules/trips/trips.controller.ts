@@ -65,6 +65,12 @@ export class TripsController {
     return this.tripsService.getTripStats(userId);
   }
 
+  @Get('my-reviews')
+  @ApiOperation({ summary: 'Mis calificaciones como chofer' })
+  getMyReviews(@CurrentUser('id') userId: string) {
+    return this.tripsService.getMyReviews(userId);
+  }
+
   @Post('test/seed-drivers')
   @ApiOperation({ summary: '[TEST] Crear/resetear conductores de prueba' })
   seedDrivers() {
