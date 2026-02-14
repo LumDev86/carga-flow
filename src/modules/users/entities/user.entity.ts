@@ -169,6 +169,14 @@ export class User {
   })
   address: string | null;
 
+  @Column({
+    nullable: true,
+    type: 'varchar',
+    length: 1000,
+    name: 'avatar_url',
+  })
+  avatarUrl: string | null;
+
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens: RefreshToken[];
 

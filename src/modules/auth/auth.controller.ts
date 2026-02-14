@@ -6,14 +6,20 @@ import {
   HttpStatus,
   Get,
   Patch,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { AuthService } from './services/auth.service';
+import { StorageService } from '../../common/storage/storage.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
@@ -27,7 +33,10 @@ import { UpdateUserDto } from '../users/dto/update-user.dto';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly storageService: StorageService,
+  ) {}
 
   @Public()
   @Post('register')
@@ -141,5 +150,26 @@ export class AuthController {
     @Body() updateUserDto: UpdateUserDto,
   ) {
     return await this.authService.updateProfile(userId, updateUserDto);
+  }
+
+  @Post('avatar')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Subir o actualizar foto de perfil' })
+  @ApiConsumes('multipart/form-data')
+  @ApiResponse({
+    status: 200,
+    description: 'Avatar actualizado exitosamente',
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadAvatar(
+    @CurrentUser('id') userId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo');
+    }
+
+    const avatarUrl = await this.storageService.uploadFile(file, `avatars/${userId}`);
+    return await this.authService.updateAvatar(userId, avatarUrl);
   }
 }

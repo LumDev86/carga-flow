@@ -33,6 +33,9 @@ export class UserResponseDto {
   @ApiProperty({ example: '0.00' })
   walletBalance: string;
 
+  @ApiProperty({ example: 'https://example.com/avatar.jpg', nullable: true })
+  avatarUrl: string | null;
+
   @ApiProperty({ example: '2025-12-22T14:30:00.000Z' })
   createdAt: Date;
 

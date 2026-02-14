@@ -186,6 +186,10 @@ export class AuthService {
     return await this.usersService.update(userId, updateUserDto);
   }
 
+  async updateAvatar(userId: string, avatarUrl: string): Promise<User> {
+    return await this.usersService.update(userId, { avatarUrl } as any);
+  }
+
   private async generateAuthResponse(user: User): Promise<AuthResponseDto> {
     const payload: JwtPayload = {
       sub: user.id,
@@ -223,6 +227,7 @@ export class AuthService {
       emailVerified: user.emailVerified,
       phoneVerified: user.phoneVerified,
       walletBalance: user.walletBalance.toString(),
+      avatarUrl: user.avatarUrl || null,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
