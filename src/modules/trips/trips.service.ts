@@ -188,7 +188,7 @@ export class TripsService {
       const driver = await this.userRepository
         .createQueryBuilder('user')
         .where('user.rol = :role', { role: UserRole.CHOFER })
-        .andWhere('user.estado = :verified', { verified: UserStatus.VERIFIED })
+        .andWhere('user.estado != :banned', { banned: UserStatus.BANNED })
         .andWhere('user.latitude IS NOT NULL')
         .andWhere('user.longitude IS NOT NULL')
         .andWhere(
