@@ -79,6 +79,12 @@ export class TripsService {
     const distanceKm = directions?.distance || 0;
     const estimatedDuration = directions?.durationText || null;
 
+    if (distanceKm <= 0) {
+      throw new BadRequestException(
+        'No se pudo calcular la distancia del viaje. Verifica las direcciones ingresadas.',
+      );
+    }
+
     // Calculate pricing based on transport type
     const pricePerKm = (dto.transportType && PRICE_PER_KM[dto.transportType]) || 50;
     const price = Math.round(distanceKm * pricePerKm);
@@ -182,7 +188,7 @@ export class TripsService {
       const driver = await this.userRepository
         .createQueryBuilder('user')
         .where('user.rol = :role', { role: UserRole.CHOFER })
-        .andWhere('user.estado != :banned', { banned: UserStatus.BANNED })
+        .andWhere('user.estado = :verified', { verified: UserStatus.VERIFIED })
         .andWhere('user.latitude IS NOT NULL')
         .andWhere('user.longitude IS NOT NULL')
         .andWhere(
@@ -198,7 +204,7 @@ export class TripsService {
             WHERE t.driver_id IS NOT NULL
             AND t.status IN (:...activeStatuses)
           )`,
-          { activeStatuses: [TripStatus.ACCEPTED, TripStatus.IN_TRANSIT] },
+          { activeStatuses: [TripStatus.ASSIGNED, TripStatus.ACCEPTED, TripStatus.IN_TRANSIT] },
         )
         .addSelect(
           `(6371 * acos(cos(radians(:lat)) * cos(radians(user.latitude)) * cos(radians(user.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(user.latitude))))`,
@@ -375,35 +381,58 @@ export class TripsService {
       throw new NotFoundException('Viaje no encontrado');
     }
 
+    // Validate user has relation with the trip
+    if (trip.requesterId !== userId && trip.driverId !== userId) {
+      throw new ForbiddenException('No tienes acceso a este viaje');
+    }
+
     return trip;
   }
 
   async acceptTrip(tripId: string, driverId: string): Promise<Trip> {
-    const trip = await this.tripRepository.findOne({
-      where: { id: tripId },
-      relations: ['requester', 'driver'],
-    });
+    const queryRunner = this.tripRepository.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    if (!trip) {
-      throw new NotFoundException('Viaje no encontrado');
-    }
+    try {
+      // Lock the trip row to prevent concurrent accepts
+      const trip = await queryRunner.manager
+        .getRepository(Trip)
+        .createQueryBuilder('trip')
+        .setLock('pessimistic_write')
+        .leftJoinAndSelect('trip.requester', 'requester')
+        .leftJoinAndSelect('trip.driver', 'driver')
+        .where('trip.id = :tripId', { tripId })
+        .getOne();
 
-    // Validate state transition
-    if (trip.status === TripStatus.ASSIGNED) {
-      if (trip.assignedDriverId !== driverId) {
-        throw new ForbiddenException('Este viaje no está asignado a ti');
+      if (!trip) {
+        throw new NotFoundException('Viaje no encontrado');
       }
-    } else if (trip.status !== TripStatus.BROADCAST) {
-      throw new BadRequestException(
-        `No se puede aceptar un viaje en estado ${trip.status}`,
-      );
+
+      // Validate state transition
+      if (trip.status === TripStatus.ASSIGNED) {
+        if (trip.assignedDriverId !== driverId) {
+          throw new ForbiddenException('Este viaje no está asignado a ti');
+        }
+      } else if (trip.status !== TripStatus.BROADCAST) {
+        throw new BadRequestException(
+          `No se puede aceptar un viaje en estado ${trip.status}`,
+        );
+      }
+
+      trip.status = TripStatus.ACCEPTED;
+      trip.driverId = driverId;
+      trip.assignedDriverId = driverId;
+      trip.acceptedAt = new Date();
+
+      await queryRunner.manager.save(trip);
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
-
-    trip.status = TripStatus.ACCEPTED;
-    trip.driverId = driverId;
-    trip.acceptedAt = new Date();
-
-    await this.tripRepository.save(trip);
 
     // Remove timeout job if exists
     if (this.tripsQueue) {
@@ -646,6 +675,10 @@ export class TripsService {
 
     if (trip.status !== TripStatus.DELIVERED) {
       throw new BadRequestException('Solo se pueden calificar viajes completados');
+    }
+
+    if (trip.rating != null) {
+      throw new BadRequestException('Este viaje ya fue calificado');
     }
 
     trip.rating = dto.rating;
