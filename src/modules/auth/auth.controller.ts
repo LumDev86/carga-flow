@@ -152,6 +152,20 @@ export class AuthController {
     return await this.authService.updateProfile(userId, updateUserDto);
   }
 
+  @Patch('availability')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Activar/desactivar disponibilidad del transportista' })
+  @ApiResponse({
+    status: 200,
+    description: 'Disponibilidad actualizada',
+  })
+  async toggleAvailability(
+    @CurrentUser('id') userId: string,
+    @Body() body: { isAvailable: boolean },
+  ) {
+    return await this.authService.updateAvailability(userId, body.isAvailable);
+  }
+
   @Post('avatar')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Subir o actualizar foto de perfil' })

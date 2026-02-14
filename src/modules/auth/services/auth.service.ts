@@ -190,6 +190,10 @@ export class AuthService {
     return await this.usersService.update(userId, { avatarUrl } as any);
   }
 
+  async updateAvailability(userId: string, isAvailable: boolean): Promise<User> {
+    return await this.usersService.update(userId, { isAvailable } as any);
+  }
+
   private async generateAuthResponse(user: User): Promise<AuthResponseDto> {
     const payload: JwtPayload = {
       sub: user.id,

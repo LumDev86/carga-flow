@@ -189,6 +189,7 @@ export class TripsService {
         .createQueryBuilder('user')
         .where('user.rol = :role', { role: UserRole.CHOFER })
         .andWhere('user.estado != :banned', { banned: UserStatus.BANNED })
+        .andWhere('user.is_available = true')
         .andWhere('user.latitude IS NOT NULL')
         .andWhere('user.longitude IS NOT NULL')
         .andWhere(

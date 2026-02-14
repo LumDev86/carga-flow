@@ -177,6 +177,12 @@ export class User {
   })
   avatarUrl: string | null;
 
+  @Column({
+    default: true,
+    name: 'is_available',
+  })
+  isAvailable: boolean;
+
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens: RefreshToken[];
 
