@@ -33,7 +33,7 @@ const PRICE_PER_KM: Record<string, number> = {
   MOTO: 20,
 };
 const COMMISSION_RATE = 0.15;
-const ASSIGNMENT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+const ASSIGNMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 @Injectable()
 export class TripsService {
@@ -178,10 +178,10 @@ export class TripsService {
   }
 
   // Radios de búsqueda incremental en km
-  private static readonly SEARCH_RADII_KM = [10, 25, 50, 100];
+  private static readonly SEARCH_RADII_KM = [1.5, 3, 6, 9];
 
   async findNearestDriver(lat: number, lng: number): Promise<User | null> {
-    // Búsqueda incremental por radio: 10km → 25km → 50km → 100km
+    // Búsqueda incremental por radio: 1.5km → 3km → 6km → 9km
     for (const radiusKm of TripsService.SEARCH_RADII_KM) {
       this.logger.log(`Searching for driver within ${radiusKm}km radius`);
 
