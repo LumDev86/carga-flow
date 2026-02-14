@@ -19,7 +19,7 @@ import { CreateTripDto } from './dto/create-trip.dto';
 import { CompleteTripDto } from './dto/complete-trip.dto';
 import { RateTripDto } from './dto/rate-trip.dto';
 import { TripFiltersDto } from './dto/trip-filters.dto';
-import { UpdateLocationDto } from './dto/update-location.dto';
+import { UpdateDriverLocationDto } from './dto/update-location.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -176,7 +176,7 @@ export class TripsController {
   updateLocation(
     @CurrentUser('id') userId: string,
     @Param('id') id: string,
-    @Body() dto: UpdateLocationDto,
+    @Body() dto: UpdateDriverLocationDto,
   ) {
     return this.tripsService.updateDriverLocation(id, userId, dto);
   }
