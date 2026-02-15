@@ -412,13 +412,11 @@ export class TripsService {
     await queryRunner.startTransaction();
 
     try {
-      // Lock the trip row to prevent concurrent accepts
+      // Lock the trip row to prevent concurrent accepts (no LEFT JOINs with FOR UPDATE)
       const trip = await queryRunner.manager
         .getRepository(Trip)
         .createQueryBuilder('trip')
         .setLock('pessimistic_write')
-        .leftJoinAndSelect('trip.requester', 'requester')
-        .leftJoinAndSelect('trip.driver', 'driver')
         .where('trip.id = :tripId', { tripId })
         .getOne();
 
