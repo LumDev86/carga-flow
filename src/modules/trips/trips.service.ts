@@ -175,12 +175,17 @@ export class TripsService {
       await this.tripRepository.save(savedTrip);
 
       if (this.tripsQueue && TripsService.SEARCH_RADII_KM.length > 1) {
-        await this.tripsQueue.add(
-          'radius-expansion',
-          { tripId: savedTrip.id, radiusIndex: 1 },
-          { delay: TripsService.RADIUS_EXPANSION_DELAY_MS, jobId: `radius-${savedTrip.id}-1` },
-        );
-        this.logger.log(`Trip ${savedTrip.id} no driver in ${firstRadiusKm}km, scheduling expansion to index 1`);
+        try {
+          await this.tripsQueue.add(
+            'radius-expansion',
+            { tripId: savedTrip.id, radiusIndex: 1 },
+            { delay: TripsService.RADIUS_EXPANSION_DELAY_MS, jobId: `radius-${savedTrip.id}-1` },
+          );
+          this.logger.log(`Trip ${savedTrip.id} no driver in ${firstRadiusKm}km, scheduling expansion to index 1`);
+        } catch (error: any) {
+          this.logger.error(`Failed to schedule radius expansion: ${error.message}`);
+          await this.doBroadcast(savedTrip);
+        }
       } else {
         // No queue or only one radius — broadcast immediately
         await this.doBroadcast(savedTrip);
@@ -446,13 +451,17 @@ export class TripsService {
       await queryRunner.release();
     }
 
-    // Remove timeout job if exists
+    // Remove timeout and radius-expansion jobs
     if (this.tripsQueue) {
       try {
         const job = await this.tripsQueue.getJob(`assignment-${tripId}`);
         if (job) await job.remove();
-      } catch (e) {
-        // Job may not exist
+      } catch (e) {}
+      for (let i = 0; i < TripsService.SEARCH_RADII_KM.length; i++) {
+        try {
+          const job = await this.tripsQueue.getJob(`radius-${tripId}-${i}`);
+          if (job) await job.remove();
+        } catch (e) {}
       }
     }
 
@@ -514,11 +523,16 @@ export class TripsService {
       await this.tripRepository.save(trip);
 
       if (this.tripsQueue) {
-        await this.tripsQueue.add(
-          'radius-expansion',
-          { tripId, radiusIndex: nextRadiusIndex },
-          { delay: 0, jobId: `radius-${tripId}-${nextRadiusIndex}` },
-        );
+        try {
+          await this.tripsQueue.add(
+            'radius-expansion',
+            { tripId, radiusIndex: nextRadiusIndex },
+            { delay: 0, jobId: `radius-${tripId}-${nextRadiusIndex}` },
+          );
+        } catch (error: any) {
+          this.logger.error(`Failed to schedule radius expansion on reject: ${error.message}`);
+          await this.doBroadcast(trip);
+        }
       } else {
         await this.expandSearchRadius(tripId, nextRadiusIndex);
       }
@@ -658,12 +672,19 @@ export class TripsService {
 
     const savedTrip = await this.tripRepository.save(trip);
 
-    // Remove timeout job if exists
+    // Remove timeout and radius-expansion jobs
     if (this.tripsQueue) {
       try {
         const job = await this.tripsQueue.getJob(`assignment-${tripId}`);
         if (job) await job.remove();
       } catch (e) {}
+      // Clean up any pending radius-expansion jobs
+      for (let i = 0; i < TripsService.SEARCH_RADII_KM.length; i++) {
+        try {
+          const job = await this.tripsQueue.getJob(`radius-${tripId}-${i}`);
+          if (job) await job.remove();
+        } catch (e) {}
+      }
     }
 
     // Notify the other party
@@ -821,11 +842,16 @@ export class TripsService {
       await this.tripRepository.save(trip);
 
       if (this.tripsQueue) {
-        await this.tripsQueue.add(
-          'radius-expansion',
-          { tripId, radiusIndex: nextRadiusIndex },
-          { delay: 0, jobId: `radius-${tripId}-${nextRadiusIndex}` },
-        );
+        try {
+          await this.tripsQueue.add(
+            'radius-expansion',
+            { tripId, radiusIndex: nextRadiusIndex },
+            { delay: 0, jobId: `radius-${tripId}-${nextRadiusIndex}` },
+          );
+        } catch (error: any) {
+          this.logger.error(`Failed to schedule radius expansion on timeout: ${error.message}`);
+          await this.doBroadcast(trip);
+        }
       } else {
         await this.expandSearchRadius(tripId, nextRadiusIndex);
       }
@@ -912,12 +938,17 @@ export class TripsService {
 
       const nextIndex = radiusIndex + 1;
       if (nextIndex < TripsService.SEARCH_RADII_KM.length && this.tripsQueue) {
-        await this.tripsQueue.add(
-          'radius-expansion',
-          { tripId, radiusIndex: nextIndex },
-          { delay: TripsService.RADIUS_EXPANSION_DELAY_MS, jobId: `radius-${tripId}-${nextIndex}` },
-        );
-        this.logger.log(`Trip ${tripId} no driver in ${radiusKm}km, scheduling expansion to index ${nextIndex}`);
+        try {
+          await this.tripsQueue.add(
+            'radius-expansion',
+            { tripId, radiusIndex: nextIndex },
+            { delay: TripsService.RADIUS_EXPANSION_DELAY_MS, jobId: `radius-${tripId}-${nextIndex}` },
+          );
+          this.logger.log(`Trip ${tripId} no driver in ${radiusKm}km, scheduling expansion to index ${nextIndex}`);
+        } catch (error: any) {
+          this.logger.error(`Failed to schedule next radius expansion: ${error.message}`);
+          await this.doBroadcast(trip);
+        }
       } else {
         // Last radius or no queue — broadcast
         await this.doBroadcast(trip);
