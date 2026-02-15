@@ -1,13 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
-export class StorageService {
+export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name);
   private supabase: SupabaseClient;
   private bucket: string;
+  private configured = false;
 
   constructor(private readonly configService: ConfigService) {
     const url = this.configService.get<string>('SUPABASE_URL');
@@ -16,9 +17,52 @@ export class StorageService {
 
     if (!url || !serviceKey || serviceKey === 'your-service-role-key') {
       this.logger.warn('Supabase Storage not configured - uploads will fail');
+    } else {
+      this.configured = true;
     }
 
     this.supabase = createClient(url || '', serviceKey || '');
+  }
+
+  async onModuleInit() {
+    if (!this.configured) return;
+    await this.ensureBucketPublic();
+  }
+
+  private async ensureBucketPublic() {
+    try {
+      const { data: bucket, error: getError } = await this.supabase.storage.getBucket(this.bucket);
+
+      if (getError) {
+        // Bucket doesn't exist — create it as public
+        this.logger.log(`Bucket "${this.bucket}" not found, creating as public...`);
+        const { error: createError } = await this.supabase.storage.createBucket(this.bucket, {
+          public: true,
+        });
+        if (createError) {
+          this.logger.error(`Failed to create bucket: ${createError.message}`);
+        } else {
+          this.logger.log(`Bucket "${this.bucket}" created as public`);
+        }
+        return;
+      }
+
+      if (bucket && !bucket.public) {
+        this.logger.log(`Bucket "${this.bucket}" is private, updating to public...`);
+        const { error: updateError } = await this.supabase.storage.updateBucket(this.bucket, {
+          public: true,
+        });
+        if (updateError) {
+          this.logger.error(`Failed to update bucket to public: ${updateError.message}`);
+        } else {
+          this.logger.log(`Bucket "${this.bucket}" updated to public`);
+        }
+      } else {
+        this.logger.log(`Bucket "${this.bucket}" is already public`);
+      }
+    } catch (err: any) {
+      this.logger.error(`Error ensuring bucket is public: ${err.message}`);
+    }
   }
 
   async uploadFile(
