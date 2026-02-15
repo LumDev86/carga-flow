@@ -134,6 +134,13 @@ export class TripsController {
     return this.tripsService.completeTrip(id, userId, dto);
   }
 
+  @Patch(':id/viewing')
+  @Roles(UserRole.CHOFER)
+  @ApiOperation({ summary: 'Marcar que el chofer está viendo el viaje' })
+  markViewing(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.tripsService.markTripAsViewing(id, userId);
+  }
+
   @Patch(':id/cancel')
   @ApiOperation({ summary: 'Cancelar viaje (solicitante o chofer)' })
   cancel(@CurrentUser('id') userId: string, @Param('id') id: string) {

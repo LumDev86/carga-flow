@@ -144,6 +144,16 @@ export class TripsService {
       this.eventsGateway.emitToUser(userId, 'trip:assigned', savedTrip);
       this.eventsGateway.emitTripUpdate(savedTrip.id, 'trip:assigned', savedTrip);
 
+      // Notify requester about the notified driver (for avatar display)
+      this.eventsGateway.emitToUser(userId, 'trip:driver_notified', {
+        tripId: savedTrip.id,
+        driver: {
+          id: nearestDriver.id,
+          name: `${nearestDriver.firstName || ''} ${nearestDriver.lastName || ''}`.trim(),
+          avatarUrl: nearestDriver.avatarUrl || null,
+        },
+      });
+
       // Schedule timeout job (if queue is available)
       if (this.tripsQueue) {
         await this.tripsQueue.add(
@@ -728,6 +738,40 @@ export class TripsService {
 
     this.eventsGateway.emitToUser(trip.requesterId, 'trip:driver_location', locationData);
     this.eventsGateway.emitTripUpdate(tripId, 'trip:driver_location', locationData);
+  }
+
+  async markTripAsViewing(tripId: string, driverId: string): Promise<void> {
+    const trip = await this.tripRepository.findOne({
+      where: { id: tripId },
+    });
+
+    if (!trip) {
+      throw new NotFoundException('Viaje no encontrado');
+    }
+
+    if (trip.status !== TripStatus.ASSIGNED && trip.status !== TripStatus.BROADCAST) {
+      throw new BadRequestException('El viaje no está en estado de búsqueda');
+    }
+
+    const driver = await this.userRepository.findOne({
+      where: { id: driverId },
+    });
+
+    if (!driver) {
+      throw new NotFoundException('Conductor no encontrado');
+    }
+
+    // Notify requester that a driver is viewing their trip
+    this.eventsGateway.emitToUser(trip.requesterId, 'trip:driver_viewing', {
+      tripId,
+      driver: {
+        id: driver.id,
+        name: `${driver.firstName || ''} ${driver.lastName || ''}`.trim(),
+        avatarUrl: driver.avatarUrl || null,
+      },
+    });
+
+    this.logger.log(`Driver ${driverId} viewing trip ${tripId}`);
   }
 
   // Called by Bull processor when assignment times out
