@@ -140,6 +140,9 @@ export class Trip {
   @Column({ name: 'broadcast_at', type: 'timestamp', nullable: true })
   broadcastAt: Date | null;
 
+  @Column({ name: 'search_radius_index', type: 'int', nullable: true, default: 0 })
+  searchRadiusIndex: number | null;
+
   // --- Timestamps reales ---
   @Column({ name: 'accepted_at', type: 'timestamp', nullable: true })
   acceptedAt: Date | null;

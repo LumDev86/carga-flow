@@ -14,4 +14,10 @@ export class AssignmentProcessor {
     this.logger.log(`Processing assignment timeout for trip ${job.data.tripId}`);
     await this.tripsService.broadcastTrip(job.data.tripId);
   }
+
+  @Process('radius-expansion')
+  async handleRadiusExpansion(job: Job<{ tripId: string; radiusIndex: number }>) {
+    this.logger.log(`Processing radius expansion for trip ${job.data.tripId} at index ${job.data.radiusIndex}`);
+    await this.tripsService.expandSearchRadius(job.data.tripId, job.data.radiusIndex);
+  }
 }

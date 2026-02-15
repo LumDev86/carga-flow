@@ -126,25 +126,31 @@ export class TripsService {
 
     const savedTrip = await this.tripRepository.save(trip);
 
-    // Find nearest driver
-    const nearestDriver = await this.findNearestDriver(dto.originLat, dto.originLng);
+    // Búsqueda progresiva: empezar por el primer radio
+    const firstRadiusKm = TripsService.SEARCH_RADII_KM[0];
+    const nearestDriver = await this.findNearestDriverInRadius(dto.originLat, dto.originLng, firstRadiusKm);
+
+    // Emitir evento de búsqueda expandiendo (radio inicial)
+    this.eventsGateway.emitToUser(userId, 'trip:search_expanding', {
+      tripId: savedTrip.id,
+      radiusKm: firstRadiusKm,
+      radiusIndex: 0,
+      totalRadii: TripsService.SEARCH_RADII_KM.length,
+    });
 
     if (nearestDriver) {
       // Assign to nearest driver
       savedTrip.status = TripStatus.ASSIGNED;
       savedTrip.driver = nearestDriver;
       savedTrip.assignedDriverId = nearestDriver.id;
+      savedTrip.searchRadiusIndex = 0;
       savedTrip.assignmentExpiresAt = new Date(Date.now() + ASSIGNMENT_TIMEOUT_MS);
       await this.tripRepository.save(savedTrip);
 
-      // Emit to assigned driver
       this.eventsGateway.emitToDriver(nearestDriver.id, 'trip:assigned', savedTrip);
-
-      // Notify requester that a driver was assigned
       this.eventsGateway.emitToUser(userId, 'trip:assigned', savedTrip);
       this.eventsGateway.emitTripUpdate(savedTrip.id, 'trip:assigned', savedTrip);
 
-      // Notify requester about the notified driver (for avatar display)
       this.eventsGateway.emitToUser(userId, 'trip:driver_notified', {
         tripId: savedTrip.id,
         driver: {
@@ -154,7 +160,6 @@ export class TripsService {
         },
       });
 
-      // Schedule timeout job (if queue is available)
       if (this.tripsQueue) {
         await this.tripsQueue.add(
           'assignment-timeout',
@@ -165,18 +170,21 @@ export class TripsService {
 
       this.logger.log(`Trip ${savedTrip.id} assigned to driver ${nearestDriver.id}`);
     } else {
-      // No driver found, broadcast
-      savedTrip.status = TripStatus.BROADCAST;
-      savedTrip.broadcastAt = new Date();
+      // No driver in first radius — schedule expansion to next radius
+      savedTrip.searchRadiusIndex = 0;
       await this.tripRepository.save(savedTrip);
 
-      this.eventsGateway.emitToAllDrivers('trip:broadcast', savedTrip);
-
-      // Notify requester that trip is being broadcast
-      this.eventsGateway.emitToUser(userId, 'trip:broadcast', savedTrip);
-      this.eventsGateway.emitTripUpdate(savedTrip.id, 'trip:broadcast', savedTrip);
-
-      this.logger.log(`Trip ${savedTrip.id} broadcasted to all drivers`);
+      if (this.tripsQueue && TripsService.SEARCH_RADII_KM.length > 1) {
+        await this.tripsQueue.add(
+          'radius-expansion',
+          { tripId: savedTrip.id, radiusIndex: 1 },
+          { delay: TripsService.RADIUS_EXPANSION_DELAY_MS, jobId: `radius-${savedTrip.id}-1` },
+        );
+        this.logger.log(`Trip ${savedTrip.id} no driver in ${firstRadiusKm}km, scheduling expansion to index 1`);
+      } else {
+        // No queue or only one radius — broadcast immediately
+        await this.doBroadcast(savedTrip);
+      }
     }
 
     // Reload with relations
@@ -187,58 +195,51 @@ export class TripsService {
     return result!;
   }
 
-  // Radios de búsqueda incremental en km
-  private static readonly SEARCH_RADII_KM = [1.5, 3, 6, 9];
+  // Radios de búsqueda progresiva en km
+  static readonly SEARCH_RADII_KM = [1, 2, 4, 7];
+  private static readonly RADIUS_EXPANSION_DELAY_MS = 10_000; // 10 segundos entre expansiones
 
-  async findNearestDriver(lat: number, lng: number): Promise<User | null> {
-    // Búsqueda incremental por radio: 1.5km → 3km → 6km → 9km
-    for (const radiusKm of TripsService.SEARCH_RADII_KM) {
-      this.logger.log(`Searching for driver within ${radiusKm}km radius`);
+  async findNearestDriverInRadius(lat: number, lng: number, radiusKm: number): Promise<User | null> {
+    this.logger.log(`Searching for driver within ${radiusKm}km radius`);
 
-      const driver = await this.userRepository
-        .createQueryBuilder('user')
-        .where('user.rol = :role', { role: UserRole.CHOFER })
-        .andWhere('user.estado != :banned', { banned: UserStatus.BANNED })
-        .andWhere('user.is_available = true')
-        .andWhere('user.latitude IS NOT NULL')
-        .andWhere('user.longitude IS NOT NULL')
-        .andWhere(
-          // Must have at least one registered vehicle
-          `user.id IN (
-            SELECT v.user_id FROM vehicles v WHERE v.is_active = true
-          )`,
-        )
-        .andWhere(
-          // No active trips
-          `user.id NOT IN (
-            SELECT t.driver_id FROM trips t
-            WHERE t.driver_id IS NOT NULL
-            AND t.status IN (:...activeStatuses)
-          )`,
-          { activeStatuses: [TripStatus.ASSIGNED, TripStatus.ACCEPTED, TripStatus.IN_TRANSIT] },
-        )
-        .addSelect(
-          `(6371 * acos(cos(radians(:lat)) * cos(radians(user.latitude)) * cos(radians(user.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(user.latitude))))`,
-          'distance',
-        )
-        .andWhere(
-          `(6371 * acos(cos(radians(:lat)) * cos(radians(user.latitude)) * cos(radians(user.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(user.latitude)))) <= :radius`,
-          { radius: radiusKm },
-        )
-        .setParameter('lat', lat)
-        .setParameter('lng', lng)
-        .orderBy('distance', 'ASC')
-        .limit(1)
-        .getOne();
+    const driver = await this.userRepository
+      .createQueryBuilder('user')
+      .where('user.rol = :role', { role: UserRole.CHOFER })
+      .andWhere('user.estado != :banned', { banned: UserStatus.BANNED })
+      .andWhere('user.is_available = true')
+      .andWhere('user.latitude IS NOT NULL')
+      .andWhere('user.longitude IS NOT NULL')
+      .andWhere(
+        `user.id IN (
+          SELECT v.user_id FROM vehicles v WHERE v.is_active = true
+        )`,
+      )
+      .andWhere(
+        `user.id NOT IN (
+          SELECT t.driver_id FROM trips t
+          WHERE t.driver_id IS NOT NULL
+          AND t.status IN (:...activeStatuses)
+        )`,
+        { activeStatuses: [TripStatus.ASSIGNED, TripStatus.ACCEPTED, TripStatus.IN_TRANSIT] },
+      )
+      .addSelect(
+        `(6371 * acos(cos(radians(:lat)) * cos(radians(user.latitude)) * cos(radians(user.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(user.latitude))))`,
+        'distance',
+      )
+      .andWhere(
+        `(6371 * acos(cos(radians(:lat)) * cos(radians(user.latitude)) * cos(radians(user.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(user.latitude)))) <= :radius`,
+        { radius: radiusKm },
+      )
+      .setParameter('lat', lat)
+      .setParameter('lng', lng)
+      .orderBy('distance', 'ASC')
+      .limit(1)
+      .getOne();
 
-      if (driver) {
-        this.logger.log(`Driver found within ${radiusKm}km radius`);
-        return driver;
-      }
+    if (driver) {
+      this.logger.log(`Driver found within ${radiusKm}km radius`);
     }
-
-    this.logger.log('No driver found in any search radius');
-    return null;
+    return driver;
   }
 
   async getMyTrips(userId: string, filters?: TripFiltersDto): Promise<Trip[]> {
@@ -488,37 +489,51 @@ export class TripsService {
       throw new BadRequestException('No puedes rechazar este viaje');
     }
 
-    // Broadcast to all drivers
-    trip.status = TripStatus.BROADCAST;
-    trip.driver = null;
-    trip.assignedDriverId = null;
-    trip.assignmentExpiresAt = null;
-    trip.broadcastAt = new Date();
-
-    const savedTrip = await this.tripRepository.save(trip);
-
     // Remove timeout job
     if (this.tripsQueue) {
       try {
         const job = await this.tripsQueue.getJob(`assignment-${tripId}`);
         if (job) await job.remove();
-      } catch (e) {
-        // Job may not exist
-      }
+      } catch (e) {}
     }
 
-    // Notify all drivers
-    this.eventsGateway.emitToAllDrivers('trip:broadcast', savedTrip);
     // Notify the driver that their assignment expired
-    this.eventsGateway.emitToDriver(driverId, 'trip:assignment_expired', savedTrip);
+    this.eventsGateway.emitToDriver(driverId, 'trip:assignment_expired', trip);
 
-    // Notify requester that trip is now broadcast
-    this.eventsGateway.emitToUser(trip.requesterId, 'trip:broadcast', savedTrip);
-    this.eventsGateway.emitTripUpdate(tripId, 'trip:broadcast', savedTrip);
+    // Try next radius before broadcasting
+    const currentRadiusIndex = trip.searchRadiusIndex ?? 0;
+    const nextRadiusIndex = currentRadiusIndex + 1;
 
-    this.logger.log(`Trip ${tripId} rejected by driver ${driverId}, now broadcast`);
+    if (nextRadiusIndex < TripsService.SEARCH_RADII_KM.length) {
+      // Revert to PENDING and try next radius
+      trip.status = TripStatus.PENDING;
+      trip.driver = null;
+      trip.driverId = null;
+      trip.assignedDriverId = null;
+      trip.assignmentExpiresAt = null;
+      await this.tripRepository.save(trip);
 
-    return savedTrip;
+      if (this.tripsQueue) {
+        await this.tripsQueue.add(
+          'radius-expansion',
+          { tripId, radiusIndex: nextRadiusIndex },
+          { delay: 0, jobId: `radius-${tripId}-${nextRadiusIndex}` },
+        );
+      } else {
+        await this.expandSearchRadius(tripId, nextRadiusIndex);
+      }
+
+      this.logger.log(`Trip ${tripId} rejected by driver ${driverId}, expanding to radius index ${nextRadiusIndex}`);
+    } else {
+      // All radii exhausted — broadcast
+      await this.doBroadcast(trip);
+      this.logger.log(`Trip ${tripId} rejected by driver ${driverId}, all radii exhausted, now broadcast`);
+    }
+
+    return this.tripRepository.findOne({
+      where: { id: tripId },
+      relations: ['requester', 'driver'],
+    }) as Promise<Trip>;
   }
 
   async startTrip(tripId: string, driverId: string): Promise<Trip> {
@@ -787,31 +802,143 @@ export class TripsService {
 
     const previousDriverId = trip.driverId;
 
+    // Notify previous driver
+    if (previousDriverId) {
+      this.eventsGateway.emitToDriver(previousDriverId, 'trip:assignment_expired', trip);
+    }
+
+    // Try next radius before broadcasting
+    const currentRadiusIndex = trip.searchRadiusIndex ?? 0;
+    const nextRadiusIndex = currentRadiusIndex + 1;
+
+    if (nextRadiusIndex < TripsService.SEARCH_RADII_KM.length) {
+      // Revert to PENDING and try next radius
+      trip.status = TripStatus.PENDING;
+      trip.driver = null;
+      trip.driverId = null;
+      trip.assignedDriverId = null;
+      trip.assignmentExpiresAt = null;
+      await this.tripRepository.save(trip);
+
+      if (this.tripsQueue) {
+        await this.tripsQueue.add(
+          'radius-expansion',
+          { tripId, radiusIndex: nextRadiusIndex },
+          { delay: 0, jobId: `radius-${tripId}-${nextRadiusIndex}` },
+        );
+      } else {
+        await this.expandSearchRadius(tripId, nextRadiusIndex);
+      }
+
+      this.logger.log(`Trip ${tripId} assignment expired, expanding to radius index ${nextRadiusIndex}`);
+    } else {
+      // All radii exhausted — broadcast
+      await this.doBroadcast(trip);
+      this.logger.log(`Trip ${tripId} assignment expired, all radii exhausted, now broadcast`);
+    }
+  }
+
+  // Búsqueda progresiva: expandir al siguiente radio
+  async expandSearchRadius(tripId: string, radiusIndex: number): Promise<void> {
+    const trip = await this.tripRepository.findOne({
+      where: { id: tripId },
+      relations: ['requester', 'driver'],
+    });
+
+    if (!trip) return;
+
+    // Only expand if still in PENDING (not cancelled/accepted/etc)
+    if (trip.status !== TripStatus.PENDING) {
+      this.logger.log(`Trip ${tripId} no longer PENDING (${trip.status}), skipping radius expansion`);
+      return;
+    }
+
+    // All radii exhausted → broadcast
+    if (radiusIndex >= TripsService.SEARCH_RADII_KM.length) {
+      await this.doBroadcast(trip);
+      this.logger.log(`Trip ${tripId} all radii exhausted, broadcasting`);
+      return;
+    }
+
+    const radiusKm = TripsService.SEARCH_RADII_KM[radiusIndex];
+
+    // Emit search_expanding to requester
+    this.eventsGateway.emitToUser(trip.requesterId, 'trip:search_expanding', {
+      tripId,
+      radiusKm,
+      radiusIndex,
+      totalRadii: TripsService.SEARCH_RADII_KM.length,
+    });
+
+    // Search for driver in this radius
+    const driver = await this.findNearestDriverInRadius(trip.originLat, trip.originLng, radiusKm);
+
+    if (driver) {
+      // Found a driver — assign
+      trip.status = TripStatus.ASSIGNED;
+      trip.driver = driver;
+      trip.driverId = driver.id;
+      trip.assignedDriverId = driver.id;
+      trip.searchRadiusIndex = radiusIndex;
+      trip.assignmentExpiresAt = new Date(Date.now() + ASSIGNMENT_TIMEOUT_MS);
+      await this.tripRepository.save(trip);
+
+      this.eventsGateway.emitToDriver(driver.id, 'trip:assigned', trip);
+      this.eventsGateway.emitToUser(trip.requesterId, 'trip:assigned', trip);
+      this.eventsGateway.emitTripUpdate(tripId, 'trip:assigned', trip);
+
+      this.eventsGateway.emitToUser(trip.requesterId, 'trip:driver_notified', {
+        tripId,
+        driver: {
+          id: driver.id,
+          name: `${driver.firstName || ''} ${driver.lastName || ''}`.trim(),
+          avatarUrl: driver.avatarUrl || null,
+        },
+      });
+
+      if (this.tripsQueue) {
+        await this.tripsQueue.add(
+          'assignment-timeout',
+          { tripId },
+          { delay: ASSIGNMENT_TIMEOUT_MS, jobId: `assignment-${tripId}` },
+        );
+      }
+
+      this.logger.log(`Trip ${tripId} assigned to driver ${driver.id} at radius ${radiusKm}km`);
+    } else {
+      // No driver in this radius — schedule next expansion
+      trip.searchRadiusIndex = radiusIndex;
+      await this.tripRepository.save(trip);
+
+      const nextIndex = radiusIndex + 1;
+      if (nextIndex < TripsService.SEARCH_RADII_KM.length && this.tripsQueue) {
+        await this.tripsQueue.add(
+          'radius-expansion',
+          { tripId, radiusIndex: nextIndex },
+          { delay: TripsService.RADIUS_EXPANSION_DELAY_MS, jobId: `radius-${tripId}-${nextIndex}` },
+        );
+        this.logger.log(`Trip ${tripId} no driver in ${radiusKm}km, scheduling expansion to index ${nextIndex}`);
+      } else {
+        // Last radius or no queue — broadcast
+        await this.doBroadcast(trip);
+        this.logger.log(`Trip ${tripId} all radii exhausted, broadcasting`);
+      }
+    }
+  }
+
+  // Helper: broadcast trip to all drivers
+  private async doBroadcast(trip: Trip): Promise<void> {
     trip.status = TripStatus.BROADCAST;
     trip.driver = null;
+    trip.driverId = null;
     trip.assignedDriverId = null;
     trip.assignmentExpiresAt = null;
     trip.broadcastAt = new Date();
-
     const savedTrip = await this.tripRepository.save(trip);
 
-    // Notify previous driver
-    if (previousDriverId) {
-      this.eventsGateway.emitToDriver(
-        previousDriverId,
-        'trip:assignment_expired',
-        savedTrip,
-      );
-    }
-
-    // Broadcast to all drivers
     this.eventsGateway.emitToAllDrivers('trip:broadcast', savedTrip);
-
-    // Notify requester that trip is now broadcast
     this.eventsGateway.emitToUser(trip.requesterId, 'trip:broadcast', savedTrip);
-    this.eventsGateway.emitTripUpdate(tripId, 'trip:broadcast', savedTrip);
-
-    this.logger.log(`Trip ${tripId} assignment expired, now broadcast`);
+    this.eventsGateway.emitTripUpdate(trip.id, 'trip:broadcast', savedTrip);
   }
 
   // ==================== TEST HELPERS ====================
