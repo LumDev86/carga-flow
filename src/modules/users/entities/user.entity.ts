@@ -178,7 +178,7 @@ export class User {
   avatarUrl: string | null;
 
   @Column({
-    default: true,
+    default: false,
     name: 'is_available',
   })
   isAvailable: boolean;
