@@ -80,7 +80,7 @@ export class Trip {
     name: 'cargo_type',
     type: 'enum',
     enum: CargoType,
-    default: CargoType.CARGA_SIMPLE,
+    default: CargoType.CARGA_GENERAL,
   })
   cargoType: CargoType;
 
