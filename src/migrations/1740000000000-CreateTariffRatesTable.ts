@@ -2,10 +2,23 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateTariffRatesTable1740000000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Create the enum type that TypeORM expects (tablename_columnname_enum)
+    await queryRunner.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tariff_rates_transporttype_enum') THEN
+          CREATE TYPE "tariff_rates_transporttype_enum" AS ENUM (
+            'CAMION', 'CAMIONETA', 'AUTO', 'MOTO', 'SEMI_REMOLQUE'
+          );
+        END IF;
+      END
+      $$
+    `);
+
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "tariff_rates" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
-        "transportType" varchar NOT NULL,
+        "transportType" "tariff_rates_transporttype_enum" NOT NULL,
         "price_per_km" decimal(10,2) NOT NULL,
         "commission_rate" decimal(5,4) NOT NULL DEFAULT 0.15,
         "is_active" boolean NOT NULL DEFAULT true,
@@ -29,5 +42,6 @@ export class CreateTariffRatesTable1740000000000 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE IF EXISTS "tariff_rates"`);
+    await queryRunner.query(`DROP TYPE IF EXISTS "tariff_rates_transporttype_enum"`);
   }
 }
