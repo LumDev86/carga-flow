@@ -97,4 +97,9 @@ export class CreateTripDto {
   @IsOptional()
   @IsDateString()
   scheduledPickupAt?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  estimatedDeliveryAt?: string;
 }

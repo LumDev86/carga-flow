@@ -119,6 +119,7 @@ export class TripsService {
       commission,
       driverPayout,
       scheduledPickupAt: dto.scheduledPickupAt ? new Date(dto.scheduledPickupAt) : null,
+      estimatedDeliveryAt: dto.estimatedDeliveryAt ? new Date(dto.estimatedDeliveryAt) : null,
       status: TripStatus.PENDING,
     });
 
