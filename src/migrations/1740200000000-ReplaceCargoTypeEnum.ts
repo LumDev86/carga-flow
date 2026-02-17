@@ -2,19 +2,27 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class ReplaceCargoTypeEnum1740200000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Check if the old enum type exists and has old values
-    const enumExists = await queryRunner.query(`
-      SELECT 1 FROM pg_type WHERE typname = 'trips_cargotype_enum'
-        OR typname = 'trips_cargo_type_enum'
-        OR typname = 'cargo_type_enum'
+    // Find the actual enum type name used by the cargo_type column
+    const udtResult = await queryRunner.query(`
+      SELECT udt_name FROM information_schema.columns
+      WHERE table_name = 'trips' AND column_name = 'cargo_type'
     `);
 
-    if (enumExists.length === 0) {
-      // No existing enum — nothing to migrate
+    if (udtResult.length === 0) {
+      // No cargo_type column — nothing to migrate
       return;
     }
 
-    // Map old cargo types to new ones
+    const oldEnumName = udtResult[0].udt_name;
+
+    // Step 1: Change column to varchar to remove enum constraint
+    await queryRunner.query(`
+      ALTER TABLE "trips"
+      ALTER COLUMN "cargo_type" TYPE varchar
+      USING "cargo_type"::text
+    `);
+
+    // Step 2: Map old values to new values
     await queryRunner.query(`
       UPDATE "trips"
       SET "cargo_type" = 'CARGA_GENERAL'
@@ -27,49 +35,76 @@ export class ReplaceCargoTypeEnum1740200000000 implements MigrationInterface {
       WHERE "cargo_type" = 'CARGA_PESADA'
     `);
 
-    // Try to alter the enum type by adding new values if they don't exist
-    const addEnumValueSafe = async (value: string) => {
-      try {
-        // Find the actual enum type name used by the cargo_type column
-        const result = await queryRunner.query(`
-          SELECT udt_name FROM information_schema.columns
-          WHERE table_name = 'trips' AND column_name = 'cargo_type'
-        `);
-        if (result.length > 0) {
-          const enumName = result[0].udt_name;
-          await queryRunner.query(
-            `ALTER TYPE "${enumName}" ADD VALUE IF NOT EXISTS '${value}'`,
-          );
-        }
-      } catch {
-        // Value might already exist
-      }
-    };
+    // Step 3: Drop old enum type
+    await queryRunner.query(`DROP TYPE IF EXISTS "${oldEnumName}"`);
 
-    await addEnumValueSafe('GRANO');
-    await addEnumValueSafe('PALES');
-    await addEnumValueSafe('GRANEL');
-    await addEnumValueSafe('CARGA_GENERAL');
+    // Step 4: Create new enum type with the same name
+    await queryRunner.query(`
+      CREATE TYPE "${oldEnumName}" AS ENUM (
+        'GRANO', 'PALES', 'GRANEL', 'CARGA_GENERAL'
+      )
+    `);
+
+    // Step 5: Change column back to enum
+    await queryRunner.query(`
+      ALTER TABLE "trips"
+      ALTER COLUMN "cargo_type" TYPE "${oldEnumName}"
+      USING "cargo_type"::"${oldEnumName}"
+    `);
+
+    // Step 6: Set default
+    await queryRunner.query(`
+      ALTER TABLE "trips"
+      ALTER COLUMN "cargo_type" SET DEFAULT 'CARGA_GENERAL'
+    `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    // Revert new types to old ones
+    const udtResult = await queryRunner.query(`
+      SELECT udt_name FROM information_schema.columns
+      WHERE table_name = 'trips' AND column_name = 'cargo_type'
+    `);
+
+    if (udtResult.length === 0) return;
+
+    const enumName = udtResult[0].udt_name;
+
+    // Change to varchar
     await queryRunner.query(`
-      UPDATE "trips"
-      SET "cargo_type" = 'CARGA_SIMPLE'
-      WHERE "cargo_type" = 'CARGA_GENERAL'
+      ALTER TABLE "trips"
+      ALTER COLUMN "cargo_type" TYPE varchar
+      USING "cargo_type"::text
+    `);
+
+    // Revert values
+    await queryRunner.query(`
+      UPDATE "trips" SET "cargo_type" = 'CARGA_SIMPLE' WHERE "cargo_type" = 'CARGA_GENERAL'
+    `);
+    await queryRunner.query(`
+      UPDATE "trips" SET "cargo_type" = 'CARGA_PESADA' WHERE "cargo_type" = 'GRANEL'
+    `);
+    await queryRunner.query(`
+      UPDATE "trips" SET "cargo_type" = 'CARGA_SIMPLE' WHERE "cargo_type" IN ('GRANO', 'PALES')
+    `);
+
+    // Recreate old enum
+    await queryRunner.query(`DROP TYPE IF EXISTS "${enumName}"`);
+    await queryRunner.query(`
+      CREATE TYPE "${enumName}" AS ENUM (
+        'CARGA_SIMPLE', 'CARGA_PESADA', 'CARGA_EXPRESS', 'CARGA_PEQUENO', 'ENVIO_PREMIUM'
+      )
+    `);
+
+    // Change back to enum
+    await queryRunner.query(`
+      ALTER TABLE "trips"
+      ALTER COLUMN "cargo_type" TYPE "${enumName}"
+      USING "cargo_type"::"${enumName}"
     `);
 
     await queryRunner.query(`
-      UPDATE "trips"
-      SET "cargo_type" = 'CARGA_PESADA'
-      WHERE "cargo_type" = 'GRANEL'
-    `);
-
-    await queryRunner.query(`
-      UPDATE "trips"
-      SET "cargo_type" = 'CARGA_SIMPLE'
-      WHERE "cargo_type" IN ('GRANO', 'PALES')
+      ALTER TABLE "trips"
+      ALTER COLUMN "cargo_type" SET DEFAULT 'CARGA_SIMPLE'
     `);
   }
 }
