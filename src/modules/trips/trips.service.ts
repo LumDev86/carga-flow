@@ -507,6 +507,12 @@ export class TripsService {
     // Notify the driver that their assignment expired
     this.eventsGateway.emitToDriver(driverId, 'trip:assignment_expired', trip);
 
+    // Notify requester that this driver stopped viewing
+    this.eventsGateway.emitToUser(trip.requesterId, 'trip:driver_stopped_viewing', {
+      tripId,
+      driverId,
+    });
+
     // Try next radius before broadcasting
     const currentRadiusIndex = trip.searchRadiusIndex ?? 0;
     const nextRadiusIndex = currentRadiusIndex + 1;
@@ -688,6 +694,11 @@ export class TripsService {
     // Notify the other party
     if (isDriver) {
       this.eventsGateway.emitToUser(trip.requesterId, 'trip:cancelled', savedTrip);
+      // Notify requester that this driver stopped viewing
+      this.eventsGateway.emitToUser(trip.requesterId, 'trip:driver_stopped_viewing', {
+        tripId,
+        driverId: userId,
+      });
     } else if (previousDriverId) {
       this.eventsGateway.emitToDriver(previousDriverId, 'trip:cancelled', savedTrip);
     }
@@ -824,6 +835,12 @@ export class TripsService {
     // Notify previous driver
     if (previousDriverId) {
       this.eventsGateway.emitToDriver(previousDriverId, 'trip:assignment_expired', trip);
+
+      // Notify requester that this driver stopped viewing
+      this.eventsGateway.emitToUser(trip.requesterId, 'trip:driver_stopped_viewing', {
+        tripId,
+        driverId: previousDriverId,
+      });
     }
 
     // Try next radius before broadcasting
