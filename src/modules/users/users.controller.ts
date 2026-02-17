@@ -36,6 +36,18 @@ export class UsersController {
     return await this.usersService.findAll();
   }
 
+  @Patch('push-token')
+  @ApiOperation({ summary: 'Registrar o eliminar push token del usuario autenticado' })
+  @ApiResponse({ status: 200, description: 'Push token actualizado' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  async updatePushToken(
+    @CurrentUser('id') userId: string,
+    @Body() body: { pushToken: string | null },
+  ) {
+    await this.usersService.updatePushToken(userId, body.pushToken);
+    return { message: 'Push token actualizado' };
+  }
+
   @Patch('location')
   @ApiOperation({ summary: 'Actualizar ubicación del usuario autenticado' })
   @ApiResponse({ status: 200, description: 'Ubicación actualizada exitosamente' })

@@ -109,6 +109,14 @@ export class UsersService {
     });
   }
 
+  async updatePushToken(userId: string, pushToken: string | null): Promise<void> {
+    await this.userRepository.update(userId, { pushToken });
+  }
+
+  async removePushToken(userId: string): Promise<void> {
+    await this.userRepository.update(userId, { pushToken: null });
+  }
+
   async updateLocation(userId: string, updateLocationDto: UpdateLocationDto): Promise<User> {
     const user = await this.findOne(userId);
 

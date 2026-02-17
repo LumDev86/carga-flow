@@ -183,6 +183,9 @@ export class User {
   })
   isAvailable: boolean;
 
+  @Column({ nullable: true, type: 'varchar', length: 200, name: 'push_token' })
+  pushToken: string | null;
+
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens: RefreshToken[];
 

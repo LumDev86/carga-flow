@@ -15,6 +15,7 @@ import { Trip } from './entities/trip.entity';
 import { User } from '../users/entities/user.entity';
 import { EventsGateway } from '../events/events.gateway';
 import { GeolocationService } from '../geolocation/geolocation.service';
+import { PushNotificationService } from '../notifications/push-notification.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { CompleteTripDto } from './dto/complete-trip.dto';
 import { RateTripDto } from './dto/rate-trip.dto';
@@ -47,6 +48,7 @@ export class TripsService {
     private readonly userRepository: Repository<User>,
     private readonly eventsGateway: EventsGateway,
     private readonly geolocationService: GeolocationService,
+    private readonly pushNotificationService: PushNotificationService,
     @Optional()
     @Inject('TRIPS_QUEUE')
     tripsQueueFallback: Queue | null,
@@ -153,6 +155,12 @@ export class TripsService {
       this.eventsGateway.emitToDriver(nearestDriver.id, 'trip:assigned', savedTrip);
       this.eventsGateway.emitToUser(userId, 'trip:assigned', savedTrip);
       this.eventsGateway.emitTripUpdate(savedTrip.id, 'trip:assigned', savedTrip);
+
+      this.pushNotificationService.sendToUser(nearestDriver.id, {
+        title: 'Nueva solicitud de viaje',
+        body: `${savedTrip.originAddress} → ${savedTrip.destinationAddress}`,
+        data: { tripId: savedTrip.id, type: 'trip:assigned' },
+      });
 
       this.eventsGateway.emitToUser(userId, 'trip:driver_notified', {
         tripId: savedTrip.id,
@@ -480,6 +488,12 @@ export class TripsService {
     this.eventsGateway.emitToUser(fullTrip.requesterId, 'trip:accepted', fullTrip);
     this.eventsGateway.emitTripUpdate(tripId, 'trip:accepted', fullTrip);
 
+    this.pushNotificationService.sendToUser(fullTrip.requesterId, {
+      title: 'Conductor encontrado',
+      body: `${fullTrip.driver?.firstName || 'Un conductor'} aceptó tu envío`,
+      data: { tripId, type: 'trip:accepted' },
+    });
+
     this.logger.log(`Trip ${tripId} accepted by driver ${driverId}`);
 
     return fullTrip;
@@ -586,6 +600,12 @@ export class TripsService {
     this.eventsGateway.emitToUser(trip.requesterId, 'trip:in_transit', savedTrip);
     this.eventsGateway.emitTripUpdate(tripId, 'trip:in_transit', savedTrip);
 
+    this.pushNotificationService.sendToUser(trip.requesterId, {
+      title: 'Envío en camino',
+      body: `Tu envío hacia ${trip.destinationAddress} está en camino`,
+      data: { tripId, type: 'trip:in_transit' },
+    });
+
     this.logger.log(`Trip ${tripId} started by driver ${driverId}`);
 
     return savedTrip;
@@ -626,6 +646,12 @@ export class TripsService {
     // Notify requester
     this.eventsGateway.emitToUser(trip.requesterId, 'trip:delivered', savedTrip);
     this.eventsGateway.emitTripUpdate(tripId, 'trip:delivered', savedTrip);
+
+    this.pushNotificationService.sendToUser(trip.requesterId, {
+      title: 'Envío entregado',
+      body: `Tu envío a ${trip.destinationAddress} fue entregado. ¡Calificá al conductor!`,
+      data: { tripId, type: 'trip:delivered' },
+    });
 
     this.logger.log(`Trip ${tripId} delivered by driver ${driverId}`);
 
@@ -702,8 +728,18 @@ export class TripsService {
         tripId,
         driverId: userId,
       });
+      this.pushNotificationService.sendToUser(trip.requesterId, {
+        title: 'Viaje cancelado',
+        body: 'El conductor canceló el viaje',
+        data: { tripId, type: 'trip:cancelled' },
+      });
     } else if (previousDriverId) {
       this.eventsGateway.emitToDriver(previousDriverId, 'trip:cancelled', savedTrip);
+      this.pushNotificationService.sendToUser(previousDriverId, {
+        title: 'Viaje cancelado',
+        body: 'El solicitante canceló el viaje',
+        data: { tripId, type: 'trip:cancelled' },
+      });
     }
 
     // If was broadcast, notify all drivers
@@ -933,6 +969,12 @@ export class TripsService {
       this.eventsGateway.emitToUser(trip.requesterId, 'trip:assigned', trip);
       this.eventsGateway.emitTripUpdate(tripId, 'trip:assigned', trip);
 
+      this.pushNotificationService.sendToUser(driver.id, {
+        title: 'Nueva solicitud de viaje',
+        body: `${trip.originAddress} → ${trip.destinationAddress}`,
+        data: { tripId, type: 'trip:assigned' },
+      });
+
       this.eventsGateway.emitToUser(trip.requesterId, 'trip:driver_notified', {
         tripId,
         driver: {
@@ -1005,6 +1047,12 @@ export class TripsService {
     this.eventsGateway.emitToAllDrivers('trip:broadcast', savedTrip);
     this.eventsGateway.emitToUser(trip.requesterId, 'trip:broadcast', savedTrip);
     this.eventsGateway.emitTripUpdate(trip.id, 'trip:broadcast', savedTrip);
+
+    this.pushNotificationService.sendToAllDrivers({
+      title: 'Viaje disponible',
+      body: `${trip.originAddress} → ${trip.destinationAddress}`,
+      data: { tripId: trip.id, type: 'trip:broadcast' },
+    });
   }
 
   // ==================== TEST HELPERS ====================

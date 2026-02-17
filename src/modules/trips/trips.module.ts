@@ -8,6 +8,7 @@ import { AssignmentProcessor } from './processors/assignment.processor';
 import { EventsModule } from '../events/events.module';
 import { GeolocationModule } from '../geolocation/geolocation.module';
 import { User } from '../users/entities/user.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 // Check if Redis is configured
 const isRedisConfigured = () => {
@@ -36,6 +37,7 @@ const queueProvider = isRedisConfigured()
     ...bullImports,
     EventsModule,
     GeolocationModule,
+    NotificationsModule,
   ],
   controllers: [TripsController],
   providers: [TripsService, ...bullProviders, ...queueProvider],
