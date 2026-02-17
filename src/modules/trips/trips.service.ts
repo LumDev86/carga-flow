@@ -147,6 +147,8 @@ export class TripsService {
       savedTrip.assignmentExpiresAt = new Date(Date.now() + ASSIGNMENT_TIMEOUT_MS);
       await this.tripRepository.save(savedTrip);
 
+      await this.attachRequesterTripCount(savedTrip);
+
       this.eventsGateway.emitToDriver(nearestDriver.id, 'trip:assigned', savedTrip);
       this.eventsGateway.emitToUser(userId, 'trip:assigned', savedTrip);
       this.eventsGateway.emitTripUpdate(savedTrip.id, 'trip:assigned', savedTrip);
@@ -924,6 +926,8 @@ export class TripsService {
       trip.assignmentExpiresAt = new Date(Date.now() + ASSIGNMENT_TIMEOUT_MS);
       await this.tripRepository.save(trip);
 
+      await this.attachRequesterTripCount(trip);
+
       this.eventsGateway.emitToDriver(driver.id, 'trip:assigned', trip);
       this.eventsGateway.emitToUser(trip.requesterId, 'trip:assigned', trip);
       this.eventsGateway.emitTripUpdate(tripId, 'trip:assigned', trip);
@@ -972,6 +976,19 @@ export class TripsService {
     }
   }
 
+  // Helper: count completed trips for a requester
+  private async getRequesterTripCount(requesterId: string): Promise<number> {
+    return this.tripRepository.count({
+      where: { requesterId, status: TripStatus.DELIVERED },
+    });
+  }
+
+  // Helper: attach requesterTripCount to trip object for emission
+  private async attachRequesterTripCount(trip: Trip): Promise<void> {
+    const count = await this.getRequesterTripCount(trip.requesterId);
+    (trip as any).requesterTripCount = count;
+  }
+
   // Helper: broadcast trip to all drivers
   private async doBroadcast(trip: Trip): Promise<void> {
     trip.status = TripStatus.BROADCAST;
@@ -981,6 +998,8 @@ export class TripsService {
     trip.assignmentExpiresAt = null;
     trip.broadcastAt = new Date();
     const savedTrip = await this.tripRepository.save(trip);
+
+    await this.attachRequesterTripCount(savedTrip);
 
     this.eventsGateway.emitToAllDrivers('trip:broadcast', savedTrip);
     this.eventsGateway.emitToUser(trip.requesterId, 'trip:broadcast', savedTrip);
