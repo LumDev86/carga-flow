@@ -9,6 +9,8 @@ import { EventsModule } from '../events/events.module';
 import { GeolocationModule } from '../geolocation/geolocation.module';
 import { User } from '../users/entities/user.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { TariffModule } from '../tariffs/tariffs.module';
+import { VehiclesModule } from '../vehicles/vehicles.module';
 
 // Check if Redis is configured
 const isRedisConfigured = () => {
@@ -38,6 +40,8 @@ const queueProvider = isRedisConfigured()
     EventsModule,
     GeolocationModule,
     NotificationsModule,
+    TariffModule,
+    VehiclesModule,
   ],
   controllers: [TripsController],
   providers: [TripsService, ...bullProviders, ...queueProvider],

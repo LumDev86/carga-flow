@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { TransportType } from '../../../shared/enums/transport-type.enum';
+import { EquipmentType } from '../../../shared/enums/equipment-type.enum';
 
 @Entity('vehicles')
 export class Vehicle {
@@ -61,6 +62,14 @@ export class Vehicle {
 
   @Column({ type: 'varchar', length: 500, nullable: true, name: 'license_back_url' })
   licenseBackUrl: string | null;
+
+  @Column({
+    type: 'enum',
+    enum: EquipmentType,
+    nullable: true,
+    name: 'equipment_type',
+  })
+  equipmentType: EquipmentType | null;
 
   @Column({ default: true, name: 'is_active' })
   isActive: boolean;

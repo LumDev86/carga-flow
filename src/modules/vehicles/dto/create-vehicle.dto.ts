@@ -9,6 +9,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TransportType } from '../../../shared/enums/transport-type.enum';
+import { EquipmentType } from '../../../shared/enums/equipment-type.enum';
 
 export class CreateVehicleDto {
   @ApiProperty({ example: 'AB 123 CD' })
@@ -47,4 +48,9 @@ export class CreateVehicleDto {
   @IsNumber()
   @Min(0)
   maxWeightKg?: number;
+
+  @ApiPropertyOptional({ enum: EquipmentType, example: EquipmentType.BARANDA_REBATIBLE })
+  @IsOptional()
+  @IsEnum(EquipmentType)
+  equipmentType?: EquipmentType;
 }

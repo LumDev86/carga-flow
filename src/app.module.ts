@@ -13,6 +13,7 @@ import { EventsModule } from './modules/events/events.module';
 import { TripsModule } from './modules/trips/trips.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { TariffModule } from './modules/tariffs/tariffs.module';
 
 // Check if Redis is configured
 const isRedisConfigured = () => {
@@ -65,6 +66,7 @@ const conditionalImports = isRedisConfigured()
     TripsModule,
     VehiclesModule,
     NotificationsModule,
+    TariffModule,
   ],
   controllers: [AppController],
   providers: [AppService],

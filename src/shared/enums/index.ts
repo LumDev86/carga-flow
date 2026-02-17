@@ -4,3 +4,4 @@ export * from './account-type.enum';
 export * from './trip-status.enum';
 export * from './transport-type.enum';
 export * from './cargo-type.enum';
+export * from './equipment-type.enum';

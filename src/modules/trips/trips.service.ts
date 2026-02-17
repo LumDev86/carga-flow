@@ -16,6 +16,7 @@ import { User } from '../users/entities/user.entity';
 import { EventsGateway } from '../events/events.gateway';
 import { GeolocationService } from '../geolocation/geolocation.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
+import { TariffService } from '../tariffs/tariffs.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { CompleteTripDto } from './dto/complete-trip.dto';
 import { RateTripDto } from './dto/rate-trip.dto';
@@ -24,17 +25,18 @@ import { UpdateDriverLocationDto } from './dto/update-location.dto';
 import { TripStatus } from '../../shared/enums/trip-status.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { UserStatus } from '../../shared/enums/user-status.enum';
+import { CargoType } from '../../shared/enums/cargo-type.enum';
+import { EquipmentType } from '../../shared/enums/equipment-type.enum';
 import * as bcrypt from 'bcrypt';
 
-const PRICE_PER_KM: Record<string, number> = {
-  SEMI_REMOLQUE: 80,
-  CAMION: 50,
-  CAMIONETA: 40,
-  AUTO: 30,
-  MOTO: 20,
-};
-const COMMISSION_RATE = 0.15;
 const ASSIGNMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+const CARGO_EQUIPMENT_MAP: Record<CargoType, EquipmentType[] | null> = {
+  [CargoType.GRANO]: [EquipmentType.CISTERNA],
+  [CargoType.PALES]: [EquipmentType.BARANDA_REBATIBLE, EquipmentType.FURGON],
+  [CargoType.GRANEL]: [EquipmentType.CISTERNA, EquipmentType.BARANDA_REBATIBLE],
+  [CargoType.CARGA_GENERAL]: null,
+};
 
 @Injectable()
 export class TripsService {
@@ -49,6 +51,7 @@ export class TripsService {
     private readonly eventsGateway: EventsGateway,
     private readonly geolocationService: GeolocationService,
     private readonly pushNotificationService: PushNotificationService,
+    private readonly tariffService: TariffService,
     @Optional()
     @Inject('TRIPS_QUEUE')
     tripsQueueFallback: Queue | null,
@@ -87,10 +90,14 @@ export class TripsService {
       );
     }
 
-    // Calculate pricing based on transport type
-    const pricePerKm = (dto.transportType && PRICE_PER_KM[dto.transportType]) || 50;
+    // Calculate pricing based on transport type (from tariff table)
+    const tariff = dto.transportType
+      ? await this.tariffService.getTariffForTransport(dto.transportType)
+      : null;
+    const pricePerKm = tariff ? Number(tariff.pricePerKm) : 50;
+    const commissionRate = tariff ? Number(tariff.commissionRate) : 0.15;
     const price = Math.round(distanceKm * pricePerKm);
-    const commission = Math.round(price * COMMISSION_RATE);
+    const commission = Math.round(price * commissionRate);
     const driverPayout = price - commission;
 
     // Create trip
@@ -131,7 +138,7 @@ export class TripsService {
 
     // Búsqueda progresiva: empezar por el primer radio
     const firstRadiusKm = TripsService.SEARCH_RADII_KM[0];
-    const nearestDriver = await this.findNearestDriverInRadius(dto.originLat, dto.originLng, firstRadiusKm);
+    const nearestDriver = await this.findNearestDriverInRadius(dto.originLat, dto.originLng, firstRadiusKm, dto.cargoType);
 
     // Emitir evento de búsqueda expandiendo (radio inicial)
     this.eventsGateway.emitToUser(userId, 'trip:search_expanding', {
@@ -215,22 +222,37 @@ export class TripsService {
   static readonly SEARCH_RADII_KM = [1, 2, 4, 7];
   private static readonly RADIUS_EXPANSION_DELAY_MS = 10_000; // 10 segundos entre expansiones
 
-  async findNearestDriverInRadius(lat: number, lng: number, radiusKm: number): Promise<User | null> {
+  async findNearestDriverInRadius(lat: number, lng: number, radiusKm: number, cargoType?: CargoType): Promise<User | null> {
     this.logger.log(`Searching for driver within ${radiusKm}km radius`);
 
-    const driver = await this.userRepository
+    const requiredEquipment = cargoType ? CARGO_EQUIPMENT_MAP[cargoType] : null;
+
+    const qb = this.userRepository
       .createQueryBuilder('user')
       .where('user.rol = :role', { role: UserRole.CHOFER })
       .andWhere('user.estado != :banned', { banned: UserStatus.BANNED })
       .andWhere('user.is_available = true')
       .andWhere('user.latitude IS NOT NULL')
-      .andWhere('user.longitude IS NOT NULL')
-      .andWhere(
+      .andWhere('user.longitude IS NOT NULL');
+
+    if (requiredEquipment) {
+      qb.andWhere(
+        `user.id IN (
+          SELECT v.user_id FROM vehicles v
+          WHERE v.is_active = true
+          AND v.equipment_type IN (:...equipmentTypes)
+        )`,
+        { equipmentTypes: requiredEquipment },
+      );
+    } else {
+      qb.andWhere(
         `user.id IN (
           SELECT v.user_id FROM vehicles v WHERE v.is_active = true
         )`,
-      )
-      .andWhere(
+      );
+    }
+
+    qb.andWhere(
         `user.id NOT IN (
           SELECT t.driver_id FROM trips t
           WHERE t.driver_id IS NOT NULL
@@ -249,8 +271,9 @@ export class TripsService {
       .setParameter('lat', lat)
       .setParameter('lng', lng)
       .orderBy('distance', 'ASC')
-      .limit(1)
-      .getOne();
+      .limit(1);
+
+    const driver = await qb.getOne();
 
     if (driver) {
       this.logger.log(`Driver found within ${radiusKm}km radius`);
@@ -950,8 +973,8 @@ export class TripsService {
       totalRadii: TripsService.SEARCH_RADII_KM.length,
     });
 
-    // Search for driver in this radius
-    const driver = await this.findNearestDriverInRadius(trip.originLat, trip.originLng, radiusKm);
+    // Search for driver in this radius (filter by cargo type equipment compatibility)
+    const driver = await this.findNearestDriverInRadius(trip.originLat, trip.originLng, radiusKm, trip.cargoType as CargoType);
 
     if (driver) {
       // Found a driver — assign
