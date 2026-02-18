@@ -11,9 +11,14 @@ async function bootstrap() {
   // Global prefix for all routes
   app.setGlobalPrefix('api');
 
-  // CORS configuration
+  // CORS configuration - support multiple origins (mobile app + web admin)
+  const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    process.env.WEB_URL || 'http://localhost:3001',
+  ].filter(Boolean);
+
   app.enableCors({
-    origin: process.env.FRONTEND_URL || '*',
+    origin: allowedOrigins.length > 0 ? allowedOrigins : '*',
     credentials: true,
   });
 

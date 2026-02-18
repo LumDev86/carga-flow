@@ -5,6 +5,7 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -30,10 +31,16 @@ export class UsersController {
 
   @Get()
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Listar todos los usuarios (solo ADMIN)' })
-  @ApiResponse({ status: 200, description: 'Lista de usuarios' })
-  async findAll() {
-    return await this.usersService.findAll();
+  @ApiOperation({ summary: 'Listar usuarios con paginación y filtros (solo ADMIN)' })
+  @ApiResponse({ status: 200, description: 'Lista paginada de usuarios' })
+  async findAll(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('role') role?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+  ) {
+    return await this.usersService.findAllPaginated({ page, limit, role, status, search });
   }
 
   @Patch('push-token')

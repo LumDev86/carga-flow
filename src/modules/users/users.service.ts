@@ -41,6 +41,48 @@ export class UsersService {
     return await this.userRepository.find();
   }
 
+  async findAllPaginated(filters: {
+    page?: number;
+    limit?: number;
+    role?: string;
+    status?: string;
+    search?: string;
+  }) {
+    const page = filters.page || 1;
+    const limit = filters.limit || 15;
+    const skip = (page - 1) * limit;
+
+    const qb = this.userRepository.createQueryBuilder('user');
+
+    if (filters.role) {
+      qb.andWhere('user.rol = :role', { role: filters.role });
+    }
+
+    if (filters.status) {
+      qb.andWhere('user.estado = :status', { status: filters.status });
+    }
+
+    if (filters.search) {
+      qb.andWhere(
+        '(user.first_name ILIKE :search OR user.last_name ILIKE :search OR user.email ILIKE :search OR user.phone ILIKE :search)',
+        { search: `%${filters.search}%` },
+      );
+    }
+
+    qb.orderBy('user.created_at', 'DESC');
+    qb.skip(skip).take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
   async findOne(id: string): Promise<User> {
     const user = await this.userRepository.findOne({ where: { id } });
 
