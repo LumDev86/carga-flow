@@ -11,6 +11,7 @@ import { User } from '../../users/entities/user.entity';
 import { TripStatus } from '../../../shared/enums/trip-status.enum';
 import { TransportType } from '../../../shared/enums/transport-type.enum';
 import { CargoType } from '../../../shared/enums/cargo-type.enum';
+import { PaymentMethodEnum } from '../../../shared/enums/payment-method.enum';
 
 @Entity('trips')
 export class Trip {
@@ -122,6 +123,21 @@ export class Trip {
 
   @Column({ name: 'driver_payout', type: 'decimal', precision: 10, scale: 2, default: 0 })
   driverPayout: number;
+
+  // --- Payment ---
+  @Column({
+    name: 'payment_method',
+    type: 'enum',
+    enum: PaymentMethodEnum,
+    default: PaymentMethodEnum.CASH,
+  })
+  paymentMethod: PaymentMethodEnum;
+
+  @Column({ name: 'payment_intent_id', type: 'varchar', nullable: true })
+  paymentIntentId: string | null;
+
+  @Column({ name: 'payment_status', type: 'varchar', nullable: true, default: 'pending' })
+  paymentStatus: string | null;
 
   // --- Schedule ---
   @Column({ name: 'scheduled_pickup_at', type: 'timestamp', nullable: true })
