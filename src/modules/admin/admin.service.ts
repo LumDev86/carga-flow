@@ -6,6 +6,7 @@ import { User } from '../users/entities/user.entity';
 import { Vehicle } from '../vehicles/entities/vehicle.entity';
 import { TripStatus } from '../../shared/enums/trip-status.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
+import { VehicleStatus } from '../../shared/enums/vehicle-status.enum';
 
 @Injectable()
 export class AdminService {
@@ -173,6 +174,7 @@ export class AdminService {
     limit?: number;
     type?: string;
     search?: string;
+    approvalStatus?: string;
   }) {
     const page = filters.page || 1;
     const limit = filters.limit || 15;
@@ -184,6 +186,12 @@ export class AdminService {
 
     if (filters.type) {
       qb.andWhere('vehicle.type = :type', { type: filters.type });
+    }
+
+    if (filters.approvalStatus) {
+      qb.andWhere('vehicle.approval_status = :approvalStatus', {
+        approvalStatus: filters.approvalStatus,
+      });
     }
 
     if (filters.search) {
@@ -212,5 +220,23 @@ export class AdminService {
       where: { id },
       relations: ['user'],
     });
+  }
+
+  async approveVehicle(id: string) {
+    const vehicle = await this.vehicleRepository.findOne({ where: { id } });
+    if (!vehicle) return null;
+
+    vehicle.approvalStatus = VehicleStatus.APPROVED;
+    vehicle.rejectionReason = null;
+    return this.vehicleRepository.save(vehicle);
+  }
+
+  async rejectVehicle(id: string, reason?: string) {
+    const vehicle = await this.vehicleRepository.findOne({ where: { id } });
+    if (!vehicle) return null;
+
+    vehicle.approvalStatus = VehicleStatus.REJECTED;
+    vehicle.rejectionReason = reason || null;
+    return this.vehicleRepository.save(vehicle);
   }
 }

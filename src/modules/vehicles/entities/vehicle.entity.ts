@@ -10,6 +10,7 @@ import {
 import { User } from '../../users/entities/user.entity';
 import { TransportType } from '../../../shared/enums/transport-type.enum';
 import { EquipmentType } from '../../../shared/enums/equipment-type.enum';
+import { VehicleStatus } from '../../../shared/enums/vehicle-status.enum';
 
 @Entity('vehicles')
 export class Vehicle {
@@ -70,6 +71,17 @@ export class Vehicle {
     name: 'equipment_type',
   })
   equipmentType: EquipmentType | null;
+
+  @Column({
+    type: 'enum',
+    enum: VehicleStatus,
+    default: VehicleStatus.PENDING_REVIEW,
+    name: 'approval_status',
+  })
+  approvalStatus: VehicleStatus;
+
+  @Column({ type: 'varchar', length: 500, nullable: true, name: 'rejection_reason' })
+  rejectionReason: string | null;
 
   @Column({ default: true, name: 'is_active' })
   isActive: boolean;

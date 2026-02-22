@@ -5,3 +5,4 @@ export * from './trip-status.enum';
 export * from './transport-type.enum';
 export * from './cargo-type.enum';
 export * from './equipment-type.enum';
+export * from './vehicle-status.enum';

@@ -1,8 +1,10 @@
 import {
   Controller,
   Get,
+  Patch,
   Param,
   Query,
+  Body,
   UseGuards,
   NotFoundException,
 } from '@nestjs/common';
@@ -108,14 +110,16 @@ export class AdminController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'type', required: false, type: String })
   @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'approvalStatus', required: false, type: String })
   @ApiResponse({ status: 200, description: 'Lista paginada de vehículos' })
   async findAllVehicles(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('type') type?: string,
     @Query('search') search?: string,
+    @Query('approvalStatus') approvalStatus?: string,
   ) {
-    return this.adminService.findAllVehicles({ page, limit, type, search });
+    return this.adminService.findAllVehicles({ page, limit, type, search, approvalStatus });
   }
 
   @Get('vehicles/:id')
@@ -124,6 +128,33 @@ export class AdminController {
   @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
   async findVehicleById(@Param('id') id: string) {
     const vehicle = await this.adminService.findVehicleById(id);
+    if (!vehicle) {
+      throw new NotFoundException('Vehículo no encontrado');
+    }
+    return vehicle;
+  }
+
+  @Patch('vehicles/:id/approve')
+  @ApiOperation({ summary: 'Aprobar un vehículo' })
+  @ApiResponse({ status: 200, description: 'Vehículo aprobado' })
+  @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
+  async approveVehicle(@Param('id') id: string) {
+    const vehicle = await this.adminService.approveVehicle(id);
+    if (!vehicle) {
+      throw new NotFoundException('Vehículo no encontrado');
+    }
+    return vehicle;
+  }
+
+  @Patch('vehicles/:id/reject')
+  @ApiOperation({ summary: 'Rechazar un vehículo' })
+  @ApiResponse({ status: 200, description: 'Vehículo rechazado' })
+  @ApiResponse({ status: 404, description: 'Vehículo no encontrado' })
+  async rejectVehicle(
+    @Param('id') id: string,
+    @Body() body: { reason?: string },
+  ) {
+    const vehicle = await this.adminService.rejectVehicle(id, body.reason);
     if (!vehicle) {
       throw new NotFoundException('Vehículo no encontrado');
     }
