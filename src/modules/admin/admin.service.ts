@@ -147,7 +147,7 @@ export class AdminService {
       );
     }
 
-    qb.orderBy('trip.created_at', 'DESC');
+    qb.orderBy('trip.createdAt', 'DESC');
     qb.skip(skip).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
@@ -193,7 +193,7 @@ export class AdminService {
       );
     }
 
-    qb.orderBy('vehicle.created_at', 'DESC');
+    qb.orderBy('vehicle.createdAt', 'DESC');
     qb.skip(skip).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
