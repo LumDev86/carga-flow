@@ -440,8 +440,14 @@ export class TripsService {
       throw new NotFoundException('Viaje no encontrado');
     }
 
-    // Validate user has relation with the trip
-    if (trip.requesterId !== userId && trip.driverId !== userId && trip.assignedDriverId !== userId) {
+    // Validate user has relation with the trip (broadcast trips are visible to all drivers)
+    const hasRelation =
+      trip.requesterId === userId ||
+      trip.driverId === userId ||
+      trip.assignedDriverId === userId ||
+      trip.status === TripStatus.BROADCAST;
+
+    if (!hasRelation) {
       throw new ForbiddenException('No tienes acceso a este viaje');
     }
 
