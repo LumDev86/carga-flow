@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -8,7 +8,8 @@ import { PaymentMethodEnum } from '../../shared/enums/payment-method.enum';
 
 @Injectable()
 export class PaymentsService {
-  private stripe: Stripe;
+  private stripe: Stripe | null = null;
+  private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
     private readonly configService: ConfigService,
@@ -16,9 +17,20 @@ export class PaymentsService {
     private readonly tripRepository: Repository<Trip>,
   ) {
     const secretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
-    this.stripe = new Stripe(secretKey || '', {
-      apiVersion: '2026-01-28.clover',
-    });
+    if (secretKey) {
+      this.stripe = new Stripe(secretKey, {
+        apiVersion: '2026-01-28.clover',
+      });
+    } else {
+      this.logger.warn('STRIPE_SECRET_KEY not configured - payment features disabled');
+    }
+  }
+
+  private getStripe(): Stripe {
+    if (!this.stripe) {
+      throw new BadRequestException('Pagos con tarjeta no disponibles. STRIPE_SECRET_KEY no configurada.');
+    }
+    return this.stripe;
   }
 
   async createPaymentIntent(amount: number, currency = 'ars', metadata?: Record<string, string>) {
@@ -29,7 +41,7 @@ export class PaymentsService {
     // Stripe expects amounts in the smallest currency unit (centavos for ARS)
     const amountInCents = Math.round(amount * 100);
 
-    const paymentIntent = await this.stripe.paymentIntents.create({
+    const paymentIntent = await this.getStripe().paymentIntents.create({
       amount: amountInCents,
       currency,
       metadata: metadata || {},
@@ -51,7 +63,7 @@ export class PaymentsService {
     }
 
     // Verify payment intent status with Stripe
-    const paymentIntent = await this.stripe.paymentIntents.retrieve(paymentIntentId);
+    const paymentIntent = await this.getStripe().paymentIntents.retrieve(paymentIntentId);
 
     if (paymentIntent.status !== 'succeeded') {
       throw new BadRequestException(`Pago no completado. Estado: ${paymentIntent.status}`);
@@ -65,7 +77,7 @@ export class PaymentsService {
   }
 
   async getPaymentStatus(paymentIntentId: string) {
-    const paymentIntent = await this.stripe.paymentIntents.retrieve(paymentIntentId);
+    const paymentIntent = await this.getStripe().paymentIntents.retrieve(paymentIntentId);
     return {
       id: paymentIntent.id,
       status: paymentIntent.status,
