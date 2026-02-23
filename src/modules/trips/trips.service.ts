@@ -17,6 +17,9 @@ import { EventsGateway } from '../events/events.gateway';
 import { GeolocationService } from '../geolocation/geolocation.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
 import { TariffService } from '../tariffs/tariffs.service';
+import { WalletService } from '../wallet/wallet.service';
+import { PaymentsService } from '../payments/payments.service';
+import { PaymentMethodEnum } from '../../shared/enums/payment-method.enum';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { CompleteTripDto } from './dto/complete-trip.dto';
@@ -53,6 +56,8 @@ export class TripsService {
     private readonly geolocationService: GeolocationService,
     private readonly pushNotificationService: PushNotificationService,
     private readonly tariffService: TariffService,
+    private readonly walletService: WalletService,
+    private readonly paymentsService: PaymentsService,
     @Optional()
     @Inject('TRIPS_QUEUE')
     tripsQueueFallback: Queue | null,
@@ -678,6 +683,42 @@ export class TripsService {
     trip.cargoPhotoUrl = dto.cargoPhotoUrl || null;
     trip.observations = dto.observations || null;
 
+    // Escrow: capture card payment if applicable
+    if (
+      trip.paymentMethod === PaymentMethodEnum.CARD &&
+      trip.paymentIntentId &&
+      trip.paymentStatus === 'authorized'
+    ) {
+      try {
+        await this.paymentsService.capturePayment(trip.paymentIntentId);
+        trip.paymentStatus = 'captured';
+        this.logger.log(`Trip ${tripId}: payment captured`);
+      } catch (error: any) {
+        this.logger.error(`Trip ${tripId}: failed to capture payment - ${error.message}`);
+        throw new BadRequestException('Error al capturar el pago con tarjeta');
+      }
+    }
+
+    // Credit driver wallet
+    if (trip.driverPayout > 0 && trip.driverId) {
+      try {
+        await this.walletService.creditDriver(
+          trip.driverId,
+          trip.driverPayout,
+          tripId,
+          `Viaje ${trip.originAddress} → ${trip.destinationAddress}`,
+        );
+        this.logger.log(`Trip ${tripId}: wallet credited $${trip.driverPayout} to driver ${trip.driverId}`);
+      } catch (error: any) {
+        this.logger.error(`Trip ${tripId}: failed to credit wallet - ${error.message}`);
+      }
+    }
+
+    // Mark payment as completed
+    if (trip.paymentStatus === 'captured' || trip.paymentMethod === PaymentMethodEnum.CASH) {
+      trip.paymentStatus = 'completed';
+    }
+
     const savedTrip = await this.tripRepository.save(trip);
 
     // Notify requester
@@ -736,6 +777,21 @@ export class TripsService {
 
     const previousStatus = trip.status;
     const previousDriverId = trip.driverId || trip.assignedDriverId;
+
+    // Release held card payment if authorized
+    if (
+      trip.paymentMethod === PaymentMethodEnum.CARD &&
+      trip.paymentIntentId &&
+      trip.paymentStatus === 'authorized'
+    ) {
+      try {
+        await this.paymentsService.cancelPaymentIntent(trip.paymentIntentId);
+        trip.paymentStatus = 'cancelled';
+        this.logger.log(`Trip ${tripId}: payment authorization released`);
+      } catch (error: any) {
+        this.logger.error(`Trip ${tripId}: failed to cancel payment - ${error.message}`);
+      }
+    }
 
     trip.status = TripStatus.CANCELLED;
     trip.cancelledAt = new Date();

@@ -11,6 +11,8 @@ import { User } from '../users/entities/user.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { TariffModule } from '../tariffs/tariffs.module';
 import { VehiclesModule } from '../vehicles/vehicles.module';
+import { WalletModule } from '../wallet/wallet.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 // Check if Redis is configured
 const isRedisConfigured = () => {
@@ -42,6 +44,8 @@ const queueProvider = isRedisConfigured()
     NotificationsModule,
     TariffModule,
     VehiclesModule,
+    WalletModule,
+    PaymentsModule,
   ],
   controllers: [TripsController],
   providers: [TripsService, ...bullProviders, ...queueProvider],

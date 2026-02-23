@@ -4,6 +4,7 @@ import { Repository, ILike, Between } from 'typeorm';
 import { Trip } from '../trips/entities/trip.entity';
 import { User } from '../users/entities/user.entity';
 import { Vehicle } from '../vehicles/entities/vehicle.entity';
+import { WalletTransaction } from '../wallet/entities/wallet-transaction.entity';
 import { TripStatus } from '../../shared/enums/trip-status.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { VehicleStatus } from '../../shared/enums/vehicle-status.enum';
@@ -17,6 +18,8 @@ export class AdminService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Vehicle)
     private readonly vehicleRepository: Repository<Vehicle>,
+    @InjectRepository(WalletTransaction)
+    private readonly walletTransactionRepository: Repository<WalletTransaction>,
   ) {}
 
   async getDashboardKpis() {
@@ -238,5 +241,88 @@ export class AdminService {
     vehicle.approvalStatus = VehicleStatus.REJECTED;
     vehicle.rejectionReason = reason || null;
     return this.vehicleRepository.save(vehicle);
+  }
+
+  // ---- Wallets ----
+
+  async findDriverWallets(filters: { page?: number; limit?: number; search?: string }) {
+    const page = filters.page || 1;
+    const limit = filters.limit || 15;
+    const skip = (page - 1) * limit;
+
+    const qb = this.userRepository
+      .createQueryBuilder('user')
+      .select([
+        'user.id',
+        'user.email',
+        'user.firstName',
+        'user.lastName',
+        'user.phone',
+        'user.walletBalance',
+      ])
+      .where('user.rol = :role', { role: UserRole.CHOFER });
+
+    if (filters.search) {
+      qb.andWhere(
+        '(user.email ILIKE :search OR user.first_name ILIKE :search OR user.last_name ILIKE :search)',
+        { search: `%${filters.search}%` },
+      );
+    }
+
+    qb.orderBy('user.walletBalance', 'DESC');
+    qb.skip(skip).take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+
+    // Get last transaction date for each driver
+    const driversWithLastTx = await Promise.all(
+      data.map(async (driver) => {
+        const lastTx = await this.walletTransactionRepository.findOne({
+          where: { userId: driver.id },
+          order: { createdAt: 'DESC' },
+        });
+        return {
+          id: driver.id,
+          email: driver.email,
+          firstName: driver.firstName,
+          lastName: driver.lastName,
+          phone: driver.phone,
+          walletBalance: Number(driver.walletBalance),
+          lastTransactionAt: lastTx?.createdAt || null,
+        };
+      }),
+    );
+
+    return {
+      data: driversWithLastTx,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async findWalletTransactions(
+    userId: string,
+    filters: { page?: number; limit?: number },
+  ) {
+    const page = filters.page || 1;
+    const limit = filters.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await this.walletTransactionRepository.findAndCount({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+      skip,
+    });
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 }

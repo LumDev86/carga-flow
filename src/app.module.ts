@@ -16,6 +16,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { TariffModule } from './modules/tariffs/tariffs.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { WalletModule } from './modules/wallet/wallet.module';
 
 // Check if Redis is configured
 const isRedisConfigured = () => {
@@ -71,6 +72,7 @@ const conditionalImports = isRedisConfigured()
     TariffModule,
     AdminModule,
     PaymentsModule,
+    WalletModule,
   ],
   controllers: [AppController],
   providers: [AppService],

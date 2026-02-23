@@ -6,9 +6,10 @@ import { Trip } from '../trips/entities/trip.entity';
 import { User } from '../users/entities/user.entity';
 import { Vehicle } from '../vehicles/entities/vehicle.entity';
 import { TariffRate } from '../tariffs/entities/tariff-rate.entity';
+import { WalletTransaction } from '../wallet/entities/wallet-transaction.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Trip, User, Vehicle, TariffRate])],
+  imports: [TypeOrmModule.forFeature([Trip, User, Vehicle, TariffRate, WalletTransaction])],
   controllers: [AdminController],
   providers: [AdminService],
 })

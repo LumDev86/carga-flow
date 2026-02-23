@@ -44,6 +44,7 @@ export class PaymentsService {
     const paymentIntent = await this.getStripe().paymentIntents.create({
       amount: amountInCents,
       currency,
+      capture_method: 'manual',
       metadata: metadata || {},
       automatic_payment_methods: {
         enabled: true,
@@ -65,15 +66,34 @@ export class PaymentsService {
     // Verify payment intent status with Stripe
     const paymentIntent = await this.getStripe().paymentIntents.retrieve(paymentIntentId);
 
-    if (paymentIntent.status !== 'succeeded') {
-      throw new BadRequestException(`Pago no completado. Estado: ${paymentIntent.status}`);
+    if (paymentIntent.status !== 'requires_capture') {
+      throw new BadRequestException(`Pago no autorizado. Estado: ${paymentIntent.status}`);
     }
 
     trip.paymentMethod = PaymentMethodEnum.CARD;
     trip.paymentIntentId = paymentIntentId;
-    trip.paymentStatus = 'paid';
+    trip.paymentStatus = 'authorized';
 
     return this.tripRepository.save(trip);
+  }
+
+  async capturePayment(paymentIntentId: string) {
+    const paymentIntent = await this.getStripe().paymentIntents.capture(paymentIntentId);
+    this.logger.log(`PaymentIntent ${paymentIntentId} captured. Status: ${paymentIntent.status}`);
+    return {
+      id: paymentIntent.id,
+      status: paymentIntent.status,
+      amount: paymentIntent.amount / 100,
+    };
+  }
+
+  async cancelPaymentIntent(paymentIntentId: string) {
+    const paymentIntent = await this.getStripe().paymentIntents.cancel(paymentIntentId);
+    this.logger.log(`PaymentIntent ${paymentIntentId} cancelled. Status: ${paymentIntent.status}`);
+    return {
+      id: paymentIntent.id,
+      status: paymentIntent.status,
+    };
   }
 
   async getPaymentStatus(paymentIntentId: string) {

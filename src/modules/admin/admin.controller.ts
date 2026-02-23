@@ -160,4 +160,33 @@ export class AdminController {
     }
     return vehicle;
   }
+
+  // ---- Wallets ----
+
+  @Get('wallets')
+  @ApiOperation({ summary: 'Listar conductores con saldo de wallet' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiResponse({ status: 200, description: 'Lista de wallets de conductores' })
+  async findDriverWallets(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
+  ) {
+    return this.adminService.findDriverWallets({ page, limit, search });
+  }
+
+  @Get('wallets/:userId/transactions')
+  @ApiOperation({ summary: 'Historial de transacciones de un conductor' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiResponse({ status: 200, description: 'Transacciones del conductor' })
+  async findWalletTransactions(
+    @Param('userId') userId: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.adminService.findWalletTransactions(userId, { page, limit });
+  }
 }
