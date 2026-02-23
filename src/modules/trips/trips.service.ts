@@ -150,9 +150,8 @@ export class TripsService {
     });
 
     if (nearestDriver) {
-      // Assign to nearest driver
+      // Assign to nearest driver (only set assignedDriverId, driverId is set on accept)
       savedTrip.status = TripStatus.ASSIGNED;
-      savedTrip.driver = nearestDriver;
       savedTrip.assignedDriverId = nearestDriver.id;
       savedTrip.searchRadiusIndex = 0;
       savedTrip.assignmentExpiresAt = new Date(Date.now() + ASSIGNMENT_TIMEOUT_MS);
@@ -257,9 +256,17 @@ export class TripsService {
         `user.id NOT IN (
           SELECT t.driver_id FROM trips t
           WHERE t.driver_id IS NOT NULL
-          AND t.status IN (:...activeStatuses)
+          AND t.status IN (:...driverActiveStatuses)
         )`,
-        { activeStatuses: [TripStatus.ASSIGNED, TripStatus.ACCEPTED, TripStatus.IN_TRANSIT] },
+        { driverActiveStatuses: [TripStatus.ACCEPTED, TripStatus.IN_TRANSIT] },
+      )
+      .andWhere(
+        `user.id NOT IN (
+          SELECT t.assigned_driver_id FROM trips t
+          WHERE t.assigned_driver_id IS NOT NULL
+          AND t.status = :assignedStatus
+        )`,
+        { assignedStatus: TripStatus.ASSIGNED },
       )
       .addSelect(
         `(6371 * acos(cos(radians(:lat)) * cos(radians(user.latitude)) * cos(radians(user.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(user.latitude))))`,
@@ -315,7 +322,7 @@ export class TripsService {
   async getMyAssignedTrips(driverId: string): Promise<Trip[]> {
     return this.tripRepository.find({
       where: {
-        driverId,
+        assignedDriverId: driverId,
         status: TripStatus.ASSIGNED,
       },
       relations: ['requester'],
@@ -434,7 +441,7 @@ export class TripsService {
     }
 
     // Validate user has relation with the trip
-    if (trip.requesterId !== userId && trip.driverId !== userId) {
+    if (trip.requesterId !== userId && trip.driverId !== userId && trip.assignedDriverId !== userId) {
       throw new ForbiddenException('No tienes acceso a este viaje');
     }
 
@@ -693,7 +700,7 @@ export class TripsService {
     }
 
     const isRequester = trip.requesterId === userId;
-    const isDriver = trip.driverId === userId;
+    const isDriver = trip.driverId === userId || trip.assignedDriverId === userId;
 
     if (!isRequester && !isDriver) {
       throw new ForbiddenException('No tienes permiso para cancelar este viaje');
@@ -722,7 +729,7 @@ export class TripsService {
     }
 
     const previousStatus = trip.status;
-    const previousDriverId = trip.driverId;
+    const previousDriverId = trip.driverId || trip.assignedDriverId;
 
     trip.status = TripStatus.CANCELLED;
     trip.cancelledAt = new Date();
@@ -893,7 +900,7 @@ export class TripsService {
       return; // Already changed state
     }
 
-    const previousDriverId = trip.driverId;
+    const previousDriverId = trip.assignedDriverId || trip.driverId;
 
     // Notify previous driver
     if (previousDriverId) {
@@ -978,10 +985,8 @@ export class TripsService {
     const driver = await this.findNearestDriverInRadius(trip.originLat, trip.originLng, radiusKm, trip.cargoType as CargoType);
 
     if (driver) {
-      // Found a driver — assign
+      // Found a driver — assign (only set assignedDriverId, driverId is set on accept)
       trip.status = TripStatus.ASSIGNED;
-      trip.driver = driver;
-      trip.driverId = driver.id;
       trip.assignedDriverId = driver.id;
       trip.searchRadiusIndex = radiusIndex;
       trip.assignmentExpiresAt = new Date(Date.now() + ASSIGNMENT_TIMEOUT_MS);
