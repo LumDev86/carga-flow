@@ -18,6 +18,7 @@ import { GeolocationService } from '../geolocation/geolocation.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
 import { TariffService } from '../tariffs/tariffs.service';
 import { CreateTripDto } from './dto/create-trip.dto';
+import { UpdateTripDto } from './dto/update-trip.dto';
 import { CompleteTripDto } from './dto/complete-trip.dto';
 import { RateTripDto } from './dto/rate-trip.dto';
 import { TripFiltersDto } from './dto/trip-filters.dto';
@@ -1076,6 +1077,107 @@ export class TripsService {
       body: `${trip.originAddress} → ${trip.destinationAddress}`,
       data: { tripId: trip.id, type: 'trip:broadcast' },
     });
+  }
+
+  async updateTrip(tripId: string, userId: string, dto: UpdateTripDto): Promise<Trip> {
+    const trip = await this.tripRepository.findOne({
+      where: { id: tripId },
+      relations: ['requester', 'driver'],
+    });
+
+    if (!trip) {
+      throw new NotFoundException('Viaje no encontrado');
+    }
+
+    if (trip.requesterId !== userId) {
+      throw new ForbiddenException('Solo el solicitante puede editar el viaje');
+    }
+
+    const editableStatuses = [TripStatus.PENDING, TripStatus.ASSIGNED, TripStatus.BROADCAST];
+    if (!editableStatuses.includes(trip.status)) {
+      throw new BadRequestException(
+        `No se puede editar un viaje en estado ${trip.status}`,
+      );
+    }
+
+    // Check if origin or destination changed (need route recalculation)
+    const originChanged =
+      (dto.originLat !== undefined && dto.originLat !== trip.originLat) ||
+      (dto.originLng !== undefined && dto.originLng !== trip.originLng);
+    const destinationChanged =
+      (dto.destinationLat !== undefined && dto.destinationLat !== trip.destinationLat) ||
+      (dto.destinationLng !== undefined && dto.destinationLng !== trip.destinationLng);
+
+    // Update only present fields
+    if (dto.originAddress !== undefined) trip.originAddress = dto.originAddress;
+    if (dto.originLat !== undefined) trip.originLat = dto.originLat;
+    if (dto.originLng !== undefined) trip.originLng = dto.originLng;
+    if (dto.originCity !== undefined) trip.originCity = dto.originCity;
+    if (dto.originState !== undefined) trip.originState = dto.originState;
+    if (dto.destinationAddress !== undefined) trip.destinationAddress = dto.destinationAddress;
+    if (dto.destinationLat !== undefined) trip.destinationLat = dto.destinationLat;
+    if (dto.destinationLng !== undefined) trip.destinationLng = dto.destinationLng;
+    if (dto.destinationCity !== undefined) trip.destinationCity = dto.destinationCity;
+    if (dto.destinationState !== undefined) trip.destinationState = dto.destinationState;
+    if (dto.cargoDescription !== undefined) trip.cargoDescription = dto.cargoDescription;
+    if (dto.cargoType !== undefined) trip.cargoType = dto.cargoType;
+    if (dto.transportType !== undefined) trip.transportType = dto.transportType;
+    if (dto.cargoWeight !== undefined) trip.cargoWeight = dto.cargoWeight;
+    if (dto.cargoWeightUnit !== undefined) trip.cargoWeightUnit = dto.cargoWeightUnit;
+    if (dto.cargoPallets !== undefined) trip.cargoPallets = dto.cargoPallets;
+    if (dto.cargoFragile !== undefined) trip.cargoFragile = dto.cargoFragile;
+    if (dto.cargoInstructions !== undefined) trip.cargoInstructions = dto.cargoInstructions;
+    if (dto.scheduledPickupAt !== undefined) trip.scheduledPickupAt = dto.scheduledPickupAt ? new Date(dto.scheduledPickupAt) : null;
+    if (dto.estimatedDeliveryAt !== undefined) trip.estimatedDeliveryAt = dto.estimatedDeliveryAt ? new Date(dto.estimatedDeliveryAt) : null;
+
+    // Recalculate route and pricing if origin or destination changed
+    if (originChanged || destinationChanged) {
+      const directions = await this.geolocationService.getDirections(
+        trip.originLat,
+        trip.originLng,
+        trip.destinationLat,
+        trip.destinationLng,
+      );
+
+      const distanceKm = directions?.distance || 0;
+      if (distanceKm <= 0) {
+        throw new BadRequestException(
+          'No se pudo calcular la distancia del viaje. Verifica las direcciones ingresadas.',
+        );
+      }
+
+      trip.distanceKm = distanceKm;
+      trip.estimatedDuration = directions?.durationText || null;
+
+      const tariff = trip.transportType
+        ? await this.tariffService.getTariffForTransport(trip.transportType)
+        : null;
+      const pricePerKm = tariff ? Number(tariff.pricePerKm) : 50;
+      const commissionRate = tariff ? Number(tariff.commissionRate) : 0.15;
+      trip.price = Math.round(distanceKm * pricePerKm);
+      trip.commission = Math.round(trip.price * commissionRate);
+      trip.driverPayout = trip.price - trip.commission;
+    }
+
+    const savedTrip = await this.tripRepository.save(trip);
+
+    // Reload with relations
+    const fullTrip = await this.tripRepository.findOne({
+      where: { id: savedTrip.id },
+      relations: ['requester', 'driver'],
+    });
+
+    // Notify requester
+    this.eventsGateway.emitToUser(userId, 'trip:updated', fullTrip);
+
+    // Notify assigned driver if exists
+    if (fullTrip!.assignedDriverId) {
+      this.eventsGateway.emitToDriver(fullTrip!.assignedDriverId, 'trip:updated', fullTrip);
+    }
+
+    this.logger.log(`Trip ${tripId} updated by requester ${userId}`);
+
+    return fullTrip!;
   }
 
   // ==================== TEST HELPERS ====================

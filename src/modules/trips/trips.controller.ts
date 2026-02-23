@@ -16,6 +16,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { TripsService } from './trips.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { CreateTripDto } from './dto/create-trip.dto';
+import { UpdateTripDto } from './dto/update-trip.dto';
 import { CompleteTripDto } from './dto/complete-trip.dto';
 import { RateTripDto } from './dto/rate-trip.dto';
 import { TripFiltersDto } from './dto/trip-filters.dto';
@@ -94,6 +95,17 @@ export class TripsController {
   @ApiOperation({ summary: '[TEST] Eliminar trips en PENDING/ASSIGNED/BROADCAST' })
   cleanupTrips() {
     return this.tripsService.cleanupTestTrips();
+  }
+
+  @Patch(':id')
+  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Editar viaje (antes de ser aceptado)' })
+  update(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateTripDto,
+  ) {
+    return this.tripsService.updateTrip(id, userId, dto);
   }
 
   @Get(':id')
