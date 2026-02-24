@@ -875,6 +875,15 @@ export class TripsService {
     return this.tripRepository.save(trip);
   }
 
+  async updateCartaDePorteUrl(tripId: string, url: string): Promise<void> {
+    const trip = await this.tripRepository.findOne({ where: { id: tripId } });
+    if (!trip) {
+      throw new NotFoundException('Viaje no encontrado');
+    }
+    trip.cartaDePorteUrl = url;
+    await this.tripRepository.save(trip);
+  }
+
   async updateDriverLocation(
     tripId: string,
     driverId: string,

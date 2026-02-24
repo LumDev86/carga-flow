@@ -182,6 +182,9 @@ export class Trip {
   @Column({ name: 'observations', nullable: true, type: 'text' })
   observations: string | null;
 
+  @Column({ name: 'carta_de_porte_url', type: 'varchar', nullable: true })
+  cartaDePorteUrl: string | null;
+
   // --- Rating ---
   @Column({ type: 'int', nullable: true })
   rating: number | null;

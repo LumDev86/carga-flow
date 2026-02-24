@@ -189,6 +189,32 @@ export class TripsController {
     };
   }
 
+  @Post(':id/carta-de-porte')
+  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Subir carta de porte' })
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadCartaDePorte(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo');
+    }
+
+    const publicUrl = await this.storageService.uploadFile(file, `trips/${id}/carta-de-porte`);
+
+    // Save URL to trip entity
+    await this.tripsService.updateCartaDePorteUrl(id, publicUrl);
+
+    return {
+      tripId: id,
+      url: publicUrl,
+      filename: file.originalname,
+      mimetype: file.mimetype,
+    };
+  }
+
   @Patch(':id/location')
   @Roles(UserRole.CHOFER)
   @ApiOperation({ summary: 'Actualizar ubicación del conductor en tiempo real' })
