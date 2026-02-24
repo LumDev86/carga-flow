@@ -1,4 +1,4 @@
-import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Query, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { GeolocationService, PlaceSuggestion, GeocodeResult, DirectionsResult } from './geolocation.service';
 import { Public } from '../../common/decorators/public.decorator';
@@ -82,6 +82,10 @@ export class GeolocationController {
       throw new BadRequestException('Las coordenadas deben ser números válidos');
     }
 
-    return this.geolocationService.getDirections(oLat, oLng, dLat, dLng);
+    const result = await this.geolocationService.getDirections(oLat, oLng, dLat, dLng);
+    if (!result) {
+      throw new NotFoundException('No se pudo obtener la ruta entre los puntos indicados');
+    }
+    return result;
   }
 }
