@@ -96,15 +96,56 @@ export class TripsService {
       );
     }
 
-    // Calculate pricing based on transport type (from tariff table)
-    const tariff = dto.transportType
-      ? await this.tariffService.getTariffForTransport(dto.transportType)
-      : null;
-    const pricePerKm = tariff ? Number(tariff.pricePerKm) : 50;
-    const commissionRate = tariff ? Number(tariff.commissionRate) : 0.15;
-    const price = Math.round(distanceKm * pricePerKm);
-    const commission = Math.round(price * commissionRate);
-    const driverPayout = price - commission;
+    // Calculate pricing
+    let price: number;
+    let commission: number;
+    let driverPayout: number;
+
+    const isGrainCargo =
+      dto.cargoType === CargoType.GRANO || dto.cargoType === CargoType.GRANEL;
+
+    if (isGrainCargo && dto.cargoWeight) {
+      // Tarifa cerealera Fe.Tr.A: $/TN × toneladas
+      const weightTon =
+        dto.cargoWeightUnit === 'ton'
+          ? dto.cargoWeight
+          : dto.cargoWeight / 1000;
+
+      const grainPrice = await this.tariffService.calculateGrainPrice(
+        distanceKm,
+        weightTon,
+      );
+
+      if (grainPrice) {
+        price = grainPrice.totalPrice;
+        commission = grainPrice.commission;
+        driverPayout = grainPrice.driverPayout;
+        this.logger.log(
+          `Tarifa cerealera aplicada: ${grainPrice.pricePerTon} $/TN × ${weightTon} TN = $${price}`,
+        );
+      } else {
+        // Fallback a tarifa estándar si no hay tabla cerealera cargada
+        this.logger.warn('No hay tarifas cerealeras cargadas, usando tarifa estándar');
+        const tariff = dto.transportType
+          ? await this.tariffService.getTariffForTransport(dto.transportType)
+          : null;
+        const pricePerKm = tariff ? Number(tariff.pricePerKm) : 50;
+        const commissionRate = tariff ? Number(tariff.commissionRate) : 0.15;
+        price = Math.round(distanceKm * pricePerKm);
+        commission = Math.round(price * commissionRate);
+        driverPayout = price - commission;
+      }
+    } else {
+      // Tarifa estándar: $/km × distancia
+      const tariff = dto.transportType
+        ? await this.tariffService.getTariffForTransport(dto.transportType)
+        : null;
+      const pricePerKm = tariff ? Number(tariff.pricePerKm) : 50;
+      const commissionRate = tariff ? Number(tariff.commissionRate) : 0.15;
+      price = Math.round(distanceKm * pricePerKm);
+      commission = Math.round(price * commissionRate);
+      driverPayout = price - commission;
+    }
 
     // Create trip
     const trip = this.tripRepository.create({
