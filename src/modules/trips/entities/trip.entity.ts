@@ -185,6 +185,16 @@ export class Trip {
   @Column({ name: 'carta_de_porte_url', type: 'varchar', nullable: true })
   cartaDePorteUrl: string | null;
 
+  // --- Flete payment tracking ---
+  @Column({ name: 'flete_received_at', type: 'timestamp', nullable: true })
+  fleteReceivedAt: Date | null;
+
+  @Column({ name: 'flete_amount', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  fleteAmount: number | null;
+
+  @Column({ name: 'driver_credited_at', type: 'timestamp', nullable: true })
+  driverCreditedAt: Date | null;
+
   // --- Rating ---
   @Column({ type: 'int', nullable: true })
   rating: number | null;

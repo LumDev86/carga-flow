@@ -19,6 +19,8 @@ import { AdminService } from './admin.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { ConfirmFleteReceivedDto } from '../trips/dto/confirm-flete.dto';
+import { ProcessWithdrawalDto, RejectWithdrawalDto } from '../wallet/dto/process-withdrawal.dto';
 
 @ApiTags('admin')
 @Controller('admin')
@@ -100,6 +102,31 @@ export class AdminController {
       throw new NotFoundException('Viaje no encontrado');
     }
     return trip;
+  }
+
+  // ---- Flete / Payment ----
+
+  @Get('trips-pending-flete')
+  @ApiOperation({ summary: 'Viajes entregados pendientes de cobro del puerto' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiResponse({ status: 200, description: 'Viajes pendientes de flete' })
+  async getTripsPendingFlete(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.adminService.getTripsPendingFlete({ page, limit });
+  }
+
+  @Patch('trips/:id/confirm-flete')
+  @ApiOperation({ summary: 'Confirmar que el puerto pagó el flete — acredita wallet del conductor' })
+  @ApiResponse({ status: 200, description: 'Flete confirmado, conductor acreditado' })
+  @ApiResponse({ status: 404, description: 'Viaje no encontrado' })
+  async confirmFleteReceived(
+    @Param('id') id: string,
+    @Body() dto: ConfirmFleteReceivedDto,
+  ) {
+    return this.adminService.confirmFleteReceived(id, dto);
   }
 
   // ---- Vehicles ----
@@ -188,5 +215,41 @@ export class AdminController {
     @Query('limit') limit?: number,
   ) {
     return this.adminService.findWalletTransactions(userId, { page, limit });
+  }
+
+  // ---- Withdrawals ----
+
+  @Get('withdrawals')
+  @ApiOperation({ summary: 'Listar solicitudes de retiro' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'status', required: false, type: String })
+  @ApiResponse({ status: 200, description: 'Lista de solicitudes de retiro' })
+  async findAllWithdrawals(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('status') status?: string,
+  ) {
+    return this.adminService.findAllWithdrawals({ page, limit, status });
+  }
+
+  @Patch('withdrawals/:id/process')
+  @ApiOperation({ summary: 'Procesar (aprobar) un retiro — marcar como transferido' })
+  @ApiResponse({ status: 200, description: 'Retiro procesado' })
+  async processWithdrawal(
+    @Param('id') id: string,
+    @Body() dto: ProcessWithdrawalDto,
+  ) {
+    return this.adminService.processWithdrawal(id, dto);
+  }
+
+  @Patch('withdrawals/:id/reject')
+  @ApiOperation({ summary: 'Rechazar un retiro — devuelve fondos al wallet' })
+  @ApiResponse({ status: 200, description: 'Retiro rechazado, fondos devueltos' })
+  async rejectWithdrawal(
+    @Param('id') id: string,
+    @Body() dto: RejectWithdrawalDto,
+  ) {
+    return this.adminService.rejectWithdrawal(id, dto);
   }
 }

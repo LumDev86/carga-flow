@@ -1,13 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike, Between } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Trip } from '../trips/entities/trip.entity';
 import { User } from '../users/entities/user.entity';
 import { Vehicle } from '../vehicles/entities/vehicle.entity';
 import { WalletTransaction } from '../wallet/entities/wallet-transaction.entity';
+import { WithdrawalRequest } from '../wallet/entities/withdrawal-request.entity';
 import { TripStatus } from '../../shared/enums/trip-status.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { VehicleStatus } from '../../shared/enums/vehicle-status.enum';
+import { WithdrawalStatus } from '../../shared/enums/withdrawal-status.enum';
+import { TripsService } from '../trips/trips.service';
+import { WalletService } from '../wallet/wallet.service';
+import { PushNotificationService } from '../notifications/push-notification.service';
+import { ConfirmFleteReceivedDto } from '../trips/dto/confirm-flete.dto';
+import { ProcessWithdrawalDto, RejectWithdrawalDto } from '../wallet/dto/process-withdrawal.dto';
 
 @Injectable()
 export class AdminService {
@@ -20,6 +27,11 @@ export class AdminService {
     private readonly vehicleRepository: Repository<Vehicle>,
     @InjectRepository(WalletTransaction)
     private readonly walletTransactionRepository: Repository<WalletTransaction>,
+    @InjectRepository(WithdrawalRequest)
+    private readonly withdrawalRepository: Repository<WithdrawalRequest>,
+    private readonly tripsService: TripsService,
+    private readonly walletService: WalletService,
+    private readonly pushNotificationService: PushNotificationService,
   ) {}
 
   async getDashboardKpis() {
@@ -29,7 +41,6 @@ export class AdminService {
       where: { rol: UserRole.CHOFER, isAvailable: true },
     });
 
-    // Revenue this month
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthRevenue = await this.tripRepository
@@ -47,11 +58,35 @@ export class AdminService {
       ],
     });
 
+    // Pending flete count
+    const pendingFleteCount = await this.tripRepository
+      .createQueryBuilder('trip')
+      .where('trip.status = :status', { status: TripStatus.DELIVERED })
+      .andWhere("(trip.payment_status = 'pending_flete' OR trip.payment_status = 'pending')")
+      .getCount();
+
+    // Pending withdrawals count
+    const pendingWithdrawals = await this.withdrawalRepository.count({
+      where: { status: WithdrawalStatus.PENDING },
+    });
+
+    // Total commissions earned
+    const monthCommission = await this.tripRepository
+      .createQueryBuilder('trip')
+      .select('COALESCE(SUM(trip.commission), 0)', 'total')
+      .where('trip.status = :status', { status: TripStatus.DELIVERED })
+      .andWhere("trip.payment_status = 'driver_credited'")
+      .andWhere('trip.flete_received_at >= :start', { start: startOfMonth })
+      .getRawOne();
+
     return {
       totalTrips,
       activeDrivers,
       monthRevenue: parseFloat(monthRevenue?.total || '0'),
       pendingTrips,
+      pendingFleteCount,
+      pendingWithdrawals,
+      monthCommission: parseFloat(monthCommission?.total || '0'),
     };
   }
 
@@ -172,6 +207,22 @@ export class AdminService {
     });
   }
 
+  // ---- Flete / Payment ----
+
+  async getTripsPendingFlete(filters?: { page?: number; limit?: number }) {
+    return this.tripsService.getTripsPendingFlete(filters);
+  }
+
+  async confirmFleteReceived(tripId: string, dto: ConfirmFleteReceivedDto) {
+    return this.tripsService.confirmFleteReceived(
+      tripId,
+      dto.fleteAmount,
+      dto.adminNote,
+    );
+  }
+
+  // ---- Vehicles ----
+
   async findAllVehicles(filters: {
     page?: number;
     limit?: number;
@@ -259,6 +310,10 @@ export class AdminService {
         'user.lastName',
         'user.phone',
         'user.walletBalance',
+        'user.cbu',
+        'user.bankAlias',
+        'user.bankName',
+        'user.bankHolderName',
       ])
       .where('user.rol = :role', { role: UserRole.CHOFER });
 
@@ -274,7 +329,6 @@ export class AdminService {
 
     const [data, total] = await qb.getManyAndCount();
 
-    // Get last transaction date for each driver
     const driversWithLastTx = await Promise.all(
       data.map(async (driver) => {
         const lastTx = await this.walletTransactionRepository.findOne({
@@ -288,6 +342,10 @@ export class AdminService {
           lastName: driver.lastName,
           phone: driver.phone,
           walletBalance: Number(driver.walletBalance),
+          cbu: driver.cbu,
+          bankAlias: driver.bankAlias,
+          bankName: driver.bankName,
+          bankHolderName: driver.bankHolderName,
           lastTransactionAt: lastTx?.createdAt || null,
         };
       }),
@@ -324,5 +382,45 @@ export class AdminService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  // ---- Withdrawals ----
+
+  async findAllWithdrawals(filters: { page?: number; limit?: number; status?: string }) {
+    return this.walletService.findAllWithdrawals(filters);
+  }
+
+  async processWithdrawal(withdrawalId: string, dto: ProcessWithdrawalDto) {
+    const withdrawal = await this.walletService.processWithdrawal(
+      withdrawalId,
+      dto.transferReference,
+      dto.adminNote,
+    );
+
+    // Notify driver
+    this.pushNotificationService.sendToUser(withdrawal.userId, {
+      title: 'Retiro procesado',
+      body: `Tu retiro de $${Number(withdrawal.amount).toLocaleString('es-AR')} fue transferido`,
+      data: { withdrawalId, type: 'withdrawal:completed' },
+    });
+
+    return withdrawal;
+  }
+
+  async rejectWithdrawal(withdrawalId: string, dto: RejectWithdrawalDto) {
+    const withdrawal = await this.walletService.rejectWithdrawal(
+      withdrawalId,
+      dto.reason,
+      dto.adminNote,
+    );
+
+    // Notify driver
+    this.pushNotificationService.sendToUser(withdrawal.userId, {
+      title: 'Retiro rechazado',
+      body: `Tu retiro fue rechazado. Los fondos fueron devueltos a tu wallet.`,
+      data: { withdrawalId, type: 'withdrawal:rejected' },
+    });
+
+    return withdrawal;
   }
 }

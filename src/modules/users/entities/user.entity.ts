@@ -183,6 +183,19 @@ export class User {
   })
   isAvailable: boolean;
 
+  // --- Datos bancarios (para retiros) ---
+  @Column({ nullable: true, type: 'varchar', length: 22 })
+  cbu: string | null;
+
+  @Column({ nullable: true, type: 'varchar', length: 50, name: 'bank_alias' })
+  bankAlias: string | null;
+
+  @Column({ nullable: true, type: 'varchar', length: 100, name: 'bank_name' })
+  bankName: string | null;
+
+  @Column({ nullable: true, type: 'varchar', length: 200, name: 'bank_holder_name' })
+  bankHolderName: string | null;
+
   @Column({ nullable: true, type: 'varchar', length: 200, name: 'push_token' })
   pushToken: string | null;
 

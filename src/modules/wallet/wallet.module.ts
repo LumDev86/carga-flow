@@ -3,10 +3,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { WalletController } from './wallet.controller';
 import { WalletService } from './wallet.service';
 import { WalletTransaction } from './entities/wallet-transaction.entity';
+import { WithdrawalRequest } from './entities/withdrawal-request.entity';
 import { User } from '../users/entities/user.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([WalletTransaction, User])],
+  imports: [TypeOrmModule.forFeature([WalletTransaction, WithdrawalRequest, User])],
   controllers: [WalletController],
   providers: [WalletService],
   exports: [WalletService],

@@ -13,6 +13,7 @@ export enum WalletTransactionType {
   DEBIT = 'DEBIT',
   ESCROW_CAPTURE = 'ESCROW_CAPTURE',
   COMMISSION = 'COMMISSION',
+  WITHDRAWAL = 'WITHDRAWAL',
 }
 
 @Entity('wallet_transactions')

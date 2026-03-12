@@ -18,6 +18,7 @@ import { GeolocationService } from '../geolocation/geolocation.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
 import { TariffService } from '../tariffs/tariffs.service';
 import { WalletService } from '../wallet/wallet.service';
+import { WalletTransaction, WalletTransactionType } from '../wallet/entities/wallet-transaction.entity';
 import { PaymentsService } from '../payments/payments.service';
 import { PaymentMethodEnum } from '../../shared/enums/payment-method.enum';
 import { CreateTripDto } from './dto/create-trip.dto';
@@ -725,46 +726,9 @@ export class TripsService {
     trip.cargoPhotoUrl = dto.cargoPhotoUrl || null;
     trip.observations = dto.observations || null;
 
-    // Escrow: capture card payment if applicable
-    if (
-      trip.paymentMethod === PaymentMethodEnum.CARD &&
-      trip.paymentIntentId &&
-      trip.paymentStatus === 'authorized'
-    ) {
-      try {
-        await this.paymentsService.capturePayment(trip.paymentIntentId);
-        trip.paymentStatus = 'captured';
-        this.logger.log(`Trip ${tripId}: payment captured`);
-      } catch (error: any) {
-        this.logger.error(`Trip ${tripId}: failed to capture payment - ${error.message}`);
-        throw new BadRequestException('Error al capturar el pago con tarjeta');
-      }
-    }
-
-    // Credit driver wallet
-    if (trip.driverPayout > 0 && trip.driverId) {
-      try {
-        await this.walletService.creditDriver(
-          trip.driverId,
-          trip.driverPayout,
-          tripId,
-          `Viaje ${trip.originAddress} → ${trip.destinationAddress}`,
-        );
-        this.logger.log(`Trip ${tripId}: wallet credited $${trip.driverPayout} to driver ${trip.driverId}`);
-      } catch (error: any) {
-        this.logger.error(`Trip ${tripId}: failed to credit wallet - ${error.message}`);
-      }
-    }
-
-    // Mark payment as completed
-    const isOffPlatformPayment = [
-      PaymentMethodEnum.CASH,
-      PaymentMethodEnum.BANK_TRANSFER,
-      PaymentMethodEnum.CHECK,
-    ].includes(trip.paymentMethod);
-    if (trip.paymentStatus === 'captured' || isOffPlatformPayment) {
-      trip.paymentStatus = 'completed';
-    }
+    // Payment status: flete pendiente de cobro al puerto
+    // El driver wallet se acredita cuando el admin confirma que el puerto pagó el flete
+    trip.paymentStatus = 'pending_flete';
 
     const savedTrip = await this.tripRepository.save(trip);
 
@@ -781,6 +745,156 @@ export class TripsService {
     this.logger.log(`Trip ${tripId} delivered by driver ${driverId}`);
 
     return savedTrip;
+  }
+
+  /**
+   * Admin confirma que el puerto pagó el flete a CargaFlow.
+   * Descuenta comisión y acredita wallet del camionero en una transacción atómica.
+   */
+  async confirmFleteReceived(
+    tripId: string,
+    fleteAmount?: number,
+    adminNote?: string,
+  ): Promise<Trip> {
+    const queryRunner = this.tripRepository.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // Lock trip row to prevent double-processing
+      const trip = await queryRunner.manager
+        .getRepository(Trip)
+        .createQueryBuilder('trip')
+        .setLock('pessimistic_write')
+        .leftJoinAndSelect('trip.requester', 'requester')
+        .leftJoinAndSelect('trip.driver', 'driver')
+        .where('trip.id = :tripId', { tripId })
+        .getOne();
+
+      if (!trip) {
+        throw new NotFoundException('Viaje no encontrado');
+      }
+
+      if (trip.status !== TripStatus.DELIVERED) {
+        throw new BadRequestException(
+          `Solo se puede confirmar flete para viajes entregados. Estado actual: ${trip.status}`,
+        );
+      }
+
+      if (trip.paymentStatus === 'driver_credited') {
+        throw new BadRequestException('El flete de este viaje ya fue procesado');
+      }
+
+      const actualFleteAmount = fleteAmount || Number(trip.price);
+      const commissionAmount = Number(trip.commission);
+      const driverPayoutAmount = actualFleteAmount - commissionAmount;
+
+      if (driverPayoutAmount <= 0) {
+        throw new BadRequestException(
+          `Monto de pago al conductor inválido: $${driverPayoutAmount}. Flete: $${actualFleteAmount}, Comisión: $${commissionAmount}`,
+        );
+      }
+
+      // Update trip payment status
+      trip.fleteReceivedAt = new Date();
+      trip.fleteAmount = actualFleteAmount;
+      trip.driverPayout = driverPayoutAmount;
+      trip.driverCreditedAt = new Date();
+      trip.paymentStatus = 'driver_credited';
+
+      // Credit driver wallet atomically (same transaction)
+      if (trip.driverId) {
+        const user = await queryRunner.manager
+          .getRepository(User)
+          .createQueryBuilder('user')
+          .setLock('pessimistic_write')
+          .where('user.id = :userId', { userId: trip.driverId })
+          .getOne();
+
+        if (user) {
+          const balanceBefore = Number(user.walletBalance);
+          const balanceAfter = balanceBefore + driverPayoutAmount;
+          user.walletBalance = balanceAfter;
+          await queryRunner.manager.save(user);
+
+          const walletTx = queryRunner.manager.getRepository(WalletTransaction).create({
+            userId: trip.driverId,
+            tripId,
+            type: WalletTransactionType.CREDIT,
+            amount: driverPayoutAmount,
+            balanceBefore,
+            balanceAfter,
+            description: `Flete cobrado: ${trip.originAddress} → ${trip.destinationAddress}`,
+          });
+          await queryRunner.manager.save(walletTx);
+
+          this.logger.log(
+            `Trip ${tripId}: flete=$${actualFleteAmount} commission=$${commissionAmount} driver_payout=$${driverPayoutAmount} balance=${balanceBefore}->${balanceAfter}`,
+          );
+        }
+      }
+
+      await queryRunner.manager.save(trip);
+      await queryRunner.commitTransaction();
+
+      // Notify driver (outside transaction)
+      if (trip.driverId) {
+        this.pushNotificationService.sendToUser(trip.driverId, {
+          title: 'Pago acreditado',
+          body: `$${driverPayoutAmount.toLocaleString('es-AR')} acreditados en tu wallet`,
+          data: { tripId, type: 'wallet:credit' },
+        });
+      }
+
+      this.logger.log(`Trip ${tripId}: flete confirmed, driver credited`);
+
+      // Reload with relations
+      const result = await this.tripRepository.findOne({
+        where: { id: tripId },
+        relations: ['requester', 'driver'],
+      });
+      return result!;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * Admin: get trips pending flete payment (DELIVERED but not yet credited)
+   */
+  async getTripsPendingFlete(filters?: { page?: number; limit?: number }): Promise<{
+    data: Trip[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 15;
+    const skip = (page - 1) * limit;
+
+    const qb = this.tripRepository
+      .createQueryBuilder('trip')
+      .leftJoinAndSelect('trip.requester', 'requester')
+      .leftJoinAndSelect('trip.driver', 'driver')
+      .where('trip.status = :status', { status: TripStatus.DELIVERED })
+      .andWhere("(trip.payment_status = 'pending_flete' OR trip.payment_status = 'pending')")
+      .orderBy('trip.delivered_at', 'ASC');
+
+    qb.skip(skip).take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async cancelTrip(tripId: string, userId: string): Promise<Trip> {
