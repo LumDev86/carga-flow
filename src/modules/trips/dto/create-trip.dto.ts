@@ -2,6 +2,7 @@ import { IsString, IsNumber, IsOptional, IsBoolean, IsEnum, IsDateString, Min } 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TransportType } from '../../../shared/enums/transport-type.enum';
 import { CargoType } from '../../../shared/enums/cargo-type.enum';
+import { PaymentMethodEnum } from '../../../shared/enums/payment-method.enum';
 
 export class CreateTripDto {
   // --- Origen ---
@@ -102,4 +103,10 @@ export class CreateTripDto {
   @IsOptional()
   @IsDateString()
   estimatedDeliveryAt?: string;
+
+  // --- Payment ---
+  @ApiPropertyOptional({ enum: PaymentMethodEnum })
+  @IsOptional()
+  @IsEnum(PaymentMethodEnum)
+  paymentMethod?: PaymentMethodEnum;
 }

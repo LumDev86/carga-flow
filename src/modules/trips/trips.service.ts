@@ -176,6 +176,7 @@ export class TripsService {
       driverPayout,
       scheduledPickupAt: dto.scheduledPickupAt ? new Date(dto.scheduledPickupAt) : null,
       estimatedDeliveryAt: dto.estimatedDeliveryAt ? new Date(dto.estimatedDeliveryAt) : null,
+      paymentMethod: dto.paymentMethod || PaymentMethodEnum.CASH,
       status: TripStatus.PENDING,
     });
 
@@ -756,7 +757,12 @@ export class TripsService {
     }
 
     // Mark payment as completed
-    if (trip.paymentStatus === 'captured' || trip.paymentMethod === PaymentMethodEnum.CASH) {
+    const isOffPlatformPayment = [
+      PaymentMethodEnum.CASH,
+      PaymentMethodEnum.BANK_TRANSFER,
+      PaymentMethodEnum.CHECK,
+    ].includes(trip.paymentMethod);
+    if (trip.paymentStatus === 'captured' || isOffPlatformPayment) {
       trip.paymentStatus = 'completed';
     }
 
