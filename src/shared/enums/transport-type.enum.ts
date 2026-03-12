@@ -1,5 +1,8 @@
 export enum TransportType {
   CAMION = 'CAMION',
+  CAMIONETA = 'CAMIONETA',
+  AUTO = 'AUTO',
+  MOTO = 'MOTO',
   SEMI_REMOLQUE = 'SEMI_REMOLQUE',
   ACOPLADO = 'ACOPLADO',
   BALANCIN = 'BALANCIN',
