@@ -49,7 +49,20 @@ export class CreateVehicleDto {
   @Min(0)
   maxWeightKg?: number;
 
-  @ApiPropertyOptional({ enum: EquipmentType, example: EquipmentType.BARANDA_REBATIBLE })
+  @ApiPropertyOptional({ example: 5, description: 'Cantidad de ejes del vehículo' })
+  @IsOptional()
+  @IsNumber()
+  @Min(2)
+  @Max(12)
+  axleCount?: number;
+
+  @ApiPropertyOptional({ example: 45, description: 'Carga máxima en toneladas (calculada por ejes)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  maxLoadTon?: number;
+
+  @ApiPropertyOptional({ enum: EquipmentType, example: EquipmentType.TOLVA })
   @IsOptional()
   @IsEnum(EquipmentType)
   equipmentType?: EquipmentType;

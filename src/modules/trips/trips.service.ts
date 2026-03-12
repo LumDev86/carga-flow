@@ -36,9 +36,9 @@ import * as bcrypt from 'bcrypt';
 const ASSIGNMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 const CARGO_EQUIPMENT_MAP: Record<CargoType, EquipmentType[] | null> = {
-  [CargoType.GRANO]: [EquipmentType.CISTERNA],
-  [CargoType.PALES]: [EquipmentType.BARANDA_REBATIBLE, EquipmentType.FURGON],
-  [CargoType.GRANEL]: [EquipmentType.CISTERNA, EquipmentType.BARANDA_REBATIBLE],
+  [CargoType.GRANO]: [EquipmentType.TOLVA, EquipmentType.CISTERNA],
+  [CargoType.PALES]: [EquipmentType.BARANDA_REBATIBLE, EquipmentType.FURGON, EquipmentType.PLAYO, EquipmentType.CARROZADO],
+  [CargoType.GRANEL]: [EquipmentType.TOLVA, EquipmentType.CISTERNA, EquipmentType.BARANDA_REBATIBLE],
   [CargoType.CARGA_GENERAL]: null,
 };
 

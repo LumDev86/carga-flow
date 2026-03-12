@@ -3,4 +3,7 @@ export enum EquipmentType {
   BARANDA_FIJA = 'BARANDA_FIJA',
   CISTERNA = 'CISTERNA',
   FURGON = 'FURGON',
+  TOLVA = 'TOLVA',
+  PLAYO = 'PLAYO',
+  CARROZADO = 'CARROZADO',
 }

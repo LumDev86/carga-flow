@@ -64,6 +64,18 @@ export class Vehicle {
   @Column({ type: 'varchar', length: 500, nullable: true, name: 'license_back_url' })
   licenseBackUrl: string | null;
 
+  @Column({ type: 'int', nullable: true, name: 'axle_count' })
+  axleCount: number | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    name: 'max_load_ton',
+  })
+  maxLoadTon: number | null;
+
   @Column({
     type: 'enum',
     enum: EquipmentType,
