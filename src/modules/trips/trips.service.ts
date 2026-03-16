@@ -580,6 +580,44 @@ export class TripsService {
     };
   }
 
+  async getMyReviewsAsRequester(requesterId: string) {
+    const trips = await this.tripRepository
+      .createQueryBuilder('trip')
+      .leftJoinAndSelect('trip.driver', 'driver')
+      .where('trip.requester_id = :requesterId', { requesterId })
+      .andWhere('trip.status = :status', { status: TripStatus.DELIVERED })
+      .andWhere('trip.driver_rating IS NOT NULL')
+      .orderBy('trip.driver_rated_at', 'DESC')
+      .getMany();
+
+    const ratings = trips.map((t) => t.driverRating!);
+    const averageRating =
+      ratings.length > 0
+        ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length
+        : 0;
+
+    const ratingCounts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    for (const r of ratings) {
+      ratingCounts[r] = (ratingCounts[r] || 0) + 1;
+    }
+
+    return {
+      averageRating: Math.round(averageRating * 100) / 100,
+      totalReviews: trips.length,
+      ratingCounts,
+      reviews: trips.map((t) => ({
+        id: t.id,
+        rating: t.driverRating,
+        comments: t.driverRatingComments,
+        deliveredAt: t.deliveredAt,
+        reviewerName: t.driver
+          ? `${t.driver.firstName} ${t.driver.lastName}`.trim()
+          : 'Conductor',
+        route: `${t.originAddress} → ${t.destinationAddress}`,
+      })),
+    };
+  }
+
   async getTripById(tripId: string, userId: string): Promise<Trip> {
     const trip = await this.tripRepository.findOne({
       where: { id: tripId },

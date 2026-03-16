@@ -92,6 +92,13 @@ export class TripsController {
     return this.tripsService.getMyReviews(userId);
   }
 
+  @Get('my-reviews-as-requester')
+  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.PRODUCTOR, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Calificaciones recibidas como dador de carga' })
+  getMyReviewsAsRequester(@CurrentUser('id') userId: string) {
+    return this.tripsService.getMyReviewsAsRequester(userId);
+  }
+
   @Post('test/seed-drivers')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[TEST] Crear/resetear conductores de prueba' })
