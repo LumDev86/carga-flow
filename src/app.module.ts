@@ -18,6 +18,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { PortsModule } from './modules/ports/ports.module';
+import { AuthorizationModule } from './modules/authorization/authorization.module';
 
 // Check if Redis is configured
 const isRedisConfigured = () => {
@@ -75,6 +76,7 @@ const conditionalImports = isRedisConfigured()
     PaymentsModule,
     WalletModule,
     PortsModule,
+    AuthorizationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

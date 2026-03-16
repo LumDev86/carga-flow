@@ -16,9 +16,11 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { TripsService } from './trips.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { CreateTripDto } from './dto/create-trip.dto';
+import { EstimateTripDto } from './dto/estimate-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { CompleteTripDto } from './dto/complete-trip.dto';
 import { RateTripDto } from './dto/rate-trip.dto';
+import { DriverRateTripDto } from './dto/driver-rate-trip.dto';
 import { TripFiltersDto } from './dto/trip-filters.dto';
 import { UpdateDriverLocationDto } from './dto/update-location.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -37,8 +39,15 @@ export class TripsController {
     private readonly storageService: StorageService,
   ) {}
 
+  @Post('estimate')
+  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.ADMIN, UserRole.PRODUCTOR)
+  @ApiOperation({ summary: 'Estimar tarifa sin crear viaje' })
+  estimate(@Body() dto: EstimateTripDto) {
+    return this.tripsService.estimateTrip(dto);
+  }
+
   @Post()
-  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.ADMIN)
+  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.ADMIN, UserRole.PRODUCTOR)
   @ApiOperation({ summary: 'Crear un nuevo viaje' })
   create(@CurrentUser('id') userId: string, @Body() dto: CreateTripDto) {
     return this.tripsService.createTrip(userId, dto);
@@ -97,8 +106,31 @@ export class TripsController {
     return this.tripsService.cleanupTestTrips();
   }
 
+  @Post(':id/documents')
+  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.ADMIN, UserRole.PRODUCTOR, UserRole.CHOFER)
+  @ApiOperation({ summary: 'Subir documento al viaje' })
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadDocument(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('type') type: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo');
+    }
+    const publicUrl = await this.storageService.uploadFile(file, `trips/${id}/documents`);
+    return this.tripsService.addTripDocument(id, type || 'OTRO', publicUrl, file.originalname);
+  }
+
+  @Get(':id/documents')
+  @ApiOperation({ summary: 'Listar documentos del viaje' })
+  getDocuments(@Param('id') id: string) {
+    return this.tripsService.getTripDocuments(id);
+  }
+
   @Patch(':id')
-  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.ADMIN)
+  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.ADMIN, UserRole.PRODUCTOR)
   @ApiOperation({ summary: 'Editar viaje (antes de ser aceptado)' })
   update(
     @CurrentUser('id') userId: string,
@@ -160,10 +192,24 @@ export class TripsController {
   }
 
   @Patch(':id/rate')
-  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO)
+  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.PRODUCTOR)
   @ApiOperation({ summary: 'Calificar viaje completado' })
   rate(@CurrentUser('id') userId: string, @Param('id') id: string, @Body() dto: RateTripDto) {
     return this.tripsService.rateTrip(id, userId, dto);
+  }
+
+  @Patch(':id/driver-rate')
+  @Roles(UserRole.CHOFER)
+  @ApiOperation({ summary: 'Calificar al dador de carga (chofer)' })
+  driverRate(@CurrentUser('id') userId: string, @Param('id') id: string, @Body() dto: DriverRateTripDto) {
+    return this.tripsService.driverRateTrip(id, userId, dto);
+  }
+
+  @Patch(':id/confirm-unload')
+  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.PRODUCTOR)
+  @ApiOperation({ summary: 'Confirmar descarga del camión' })
+  confirmUnload(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.tripsService.confirmUnload(id, userId);
   }
 
   @Post(':id/evidence')
@@ -190,7 +236,7 @@ export class TripsController {
   }
 
   @Post(':id/carta-de-porte')
-  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.ADMIN)
+  @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.ADMIN, UserRole.PRODUCTOR)
   @ApiOperation({ summary: 'Subir carta de porte' })
   @UseInterceptors(FileInterceptor('file'))
   async uploadCartaDePorte(

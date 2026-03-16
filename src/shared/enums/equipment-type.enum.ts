@@ -6,4 +6,7 @@ export enum EquipmentType {
   TOLVA = 'TOLVA',
   PLAYO = 'PLAYO',
   CARROZADO = 'CARROZADO',
+  BATEA = 'BATEA',
+  ESCALABLE = 'ESCALABLE',
+  BITREN = 'BITREN',
 }

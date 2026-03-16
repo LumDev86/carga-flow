@@ -3,4 +3,5 @@ export enum UserRole {
   CHOFER = 'CHOFER',
   SOLICITANTE = 'SOLICITANTE',
   PUERTO = 'PUERTO',
+  PRODUCTOR = 'PRODUCTOR',
 }

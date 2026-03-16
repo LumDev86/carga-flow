@@ -195,12 +195,29 @@ export class Trip {
   @Column({ name: 'driver_credited_at', type: 'timestamp', nullable: true })
   driverCreditedAt: Date | null;
 
+  // --- Confirmación de descarga ---
+  @Column({ name: 'unload_confirmed_at', type: 'timestamp', nullable: true })
+  unloadConfirmedAt: Date | null;
+
+  @Column({ name: 'unload_confirmed_by_id', type: 'uuid', nullable: true })
+  unloadConfirmedById: string | null;
+
   // --- Rating ---
   @Column({ type: 'int', nullable: true })
   rating: number | null;
 
   @Column({ name: 'rating_comments', nullable: true, type: 'text' })
   ratingComments: string | null;
+
+  // --- Driver Rating (chofer califica al dador) ---
+  @Column({ name: 'driver_rating', type: 'int', nullable: true })
+  driverRating: number | null;
+
+  @Column({ name: 'driver_rating_comments', nullable: true, type: 'text' })
+  driverRatingComments: string | null;
+
+  @Column({ name: 'driver_rated_at', type: 'timestamp', nullable: true })
+  driverRatedAt: Date | null;
 
   // --- Timestamps ---
   @CreateDateColumn({ name: 'created_at' })

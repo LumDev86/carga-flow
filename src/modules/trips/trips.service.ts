@@ -12,6 +12,7 @@ import { Repository } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { Trip } from './entities/trip.entity';
+import { TripDocument } from './entities/trip-document.entity';
 import { User } from '../users/entities/user.entity';
 import { EventsGateway } from '../events/events.gateway';
 import { GeolocationService } from '../geolocation/geolocation.service';
@@ -22,22 +23,25 @@ import { WalletTransaction, WalletTransactionType } from '../wallet/entities/wal
 import { PaymentsService } from '../payments/payments.service';
 import { PaymentMethodEnum } from '../../shared/enums/payment-method.enum';
 import { CreateTripDto } from './dto/create-trip.dto';
+import { EstimateTripDto } from './dto/estimate-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { CompleteTripDto } from './dto/complete-trip.dto';
 import { RateTripDto } from './dto/rate-trip.dto';
+import { DriverRateTripDto } from './dto/driver-rate-trip.dto';
 import { TripFiltersDto } from './dto/trip-filters.dto';
 import { UpdateDriverLocationDto } from './dto/update-location.dto';
 import { TripStatus } from '../../shared/enums/trip-status.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { UserStatus } from '../../shared/enums/user-status.enum';
 import { CargoType } from '../../shared/enums/cargo-type.enum';
+import { DocumentType } from '../../shared/enums/document-type.enum';
 import { EquipmentType } from '../../shared/enums/equipment-type.enum';
 import * as bcrypt from 'bcrypt';
 
 const ASSIGNMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 const CARGO_EQUIPMENT_MAP: Record<CargoType, EquipmentType[] | null> = {
-  [CargoType.GRANO]: [EquipmentType.TOLVA, EquipmentType.CISTERNA],
+  [CargoType.GRANOS_DERIVADOS]: [EquipmentType.TOLVA, EquipmentType.CISTERNA, EquipmentType.BATEA, EquipmentType.ESCALABLE, EquipmentType.BITREN],
   [CargoType.PALES]: [EquipmentType.BARANDA_REBATIBLE, EquipmentType.FURGON, EquipmentType.PLAYO, EquipmentType.CARROZADO],
   [CargoType.GRANEL]: [EquipmentType.TOLVA, EquipmentType.CISTERNA, EquipmentType.BARANDA_REBATIBLE],
   [CargoType.CARGA_GENERAL]: null,
@@ -53,6 +57,8 @@ export class TripsService {
     private readonly tripRepository: Repository<Trip>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(TripDocument)
+    private readonly tripDocumentRepository: Repository<TripDocument>,
     private readonly eventsGateway: EventsGateway,
     private readonly geolocationService: GeolocationService,
     private readonly pushNotificationService: PushNotificationService,
@@ -73,11 +79,103 @@ export class TripsService {
     }
   }
 
+  async estimateTrip(dto: EstimateTripDto) {
+    const directions = await this.geolocationService.getDirections(
+      dto.originLat,
+      dto.originLng,
+      dto.destinationLat,
+      dto.destinationLng,
+    );
+
+    const distanceKm = directions?.distance || 0;
+    const estimatedDuration = directions?.durationText || null;
+
+    if (distanceKm <= 0) {
+      throw new BadRequestException(
+        'No se pudo calcular la distancia. Verifica las coordenadas ingresadas.',
+      );
+    }
+
+    let price: number;
+    let commission: number;
+    let driverPayout: number;
+
+    const isGrainCargo =
+      dto.cargoType === CargoType.GRANOS_DERIVADOS || dto.cargoType === CargoType.GRANEL;
+
+    if (isGrainCargo && dto.cargoWeight) {
+      const weightTon =
+        dto.cargoWeightUnit === 'ton'
+          ? dto.cargoWeight
+          : dto.cargoWeight / 1000;
+
+      const grainPrice = await this.tariffService.calculateGrainPrice(
+        distanceKm,
+        weightTon,
+      );
+
+      if (grainPrice) {
+        price = grainPrice.totalPrice;
+        commission = grainPrice.commission;
+        driverPayout = grainPrice.driverPayout;
+      } else {
+        const tariff = dto.transportType
+          ? await this.tariffService.getTariffForTransport(dto.transportType)
+          : null;
+        const pricePerKm = tariff ? Number(tariff.pricePerKm) : 50;
+        const commissionRate = tariff ? Number(tariff.commissionRate) : 0.15;
+        price = Math.round(distanceKm * pricePerKm);
+        commission = Math.round(price * commissionRate);
+        driverPayout = price - commission;
+      }
+    } else {
+      const tariff = dto.transportType
+        ? await this.tariffService.getTariffForTransport(dto.transportType)
+        : null;
+      const pricePerKm = tariff ? Number(tariff.pricePerKm) : 50;
+      const commissionRate = tariff ? Number(tariff.commissionRate) : 0.15;
+      price = Math.round(distanceKm * pricePerKm);
+      commission = Math.round(price * commissionRate);
+      driverPayout = price - commission;
+    }
+
+    const estimatedDeliveryMinutes = Math.round((distanceKm / 80) * 60 + 30);
+
+    return {
+      distanceKm,
+      estimatedDuration,
+      price,
+      commission,
+      driverPayout,
+      estimatedDeliveryMinutes,
+    };
+  }
+
   async createTrip(userId: string, dto: CreateTripDto): Promise<Trip> {
     this.logger.log(`Creating trip for user: ${userId}`);
 
     if (!userId) {
       throw new BadRequestException('userId is required to create a trip');
+    }
+
+    // Validate PRODUCTOR can only create grain-type trips
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (user?.rol === UserRole.PRODUCTOR) {
+      const allowedCargoTypes = [CargoType.GRANOS_DERIVADOS, CargoType.GRANEL];
+      if (dto.cargoType && !allowedCargoTypes.includes(dto.cargoType)) {
+        throw new BadRequestException(
+          'Los productores solo pueden crear viajes de tipo Granos y Derivados o Granel',
+        );
+      }
+    }
+
+    // Verify intermediation authorization is signed
+    if (user && [UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.PRODUCTOR].includes(user.rol)) {
+      if (!user.hasSignedIntermediationAuth) {
+        throw new BadRequestException(
+          'Debes firmar la autorización de intermediación antes de crear un viaje',
+        );
+      }
     }
 
     // Calculate route
@@ -103,7 +201,7 @@ export class TripsService {
     let driverPayout: number;
 
     const isGrainCargo =
-      dto.cargoType === CargoType.GRANO || dto.cargoType === CargoType.GRANEL;
+      dto.cargoType === CargoType.GRANOS_DERIVADOS || dto.cargoType === CargoType.GRANEL;
 
     if (isGrainCargo && dto.cargoWeight) {
       // Tarifa cerealera Fe.Tr.A: $/TN × toneladas
@@ -176,7 +274,11 @@ export class TripsService {
       commission,
       driverPayout,
       scheduledPickupAt: dto.scheduledPickupAt ? new Date(dto.scheduledPickupAt) : null,
-      estimatedDeliveryAt: dto.estimatedDeliveryAt ? new Date(dto.estimatedDeliveryAt) : null,
+      estimatedDeliveryAt: (() => {
+        const estimatedDeliveryMinutes = Math.round((distanceKm / 80) * 60 + 30);
+        const pickupTime = dto.scheduledPickupAt ? new Date(dto.scheduledPickupAt) : new Date();
+        return new Date(pickupTime.getTime() + estimatedDeliveryMinutes * 60000);
+      })(),
       paymentMethod: dto.paymentMethod || PaymentMethodEnum.CASH,
       status: TripStatus.PENDING,
     });
@@ -676,6 +778,23 @@ export class TripsService {
       );
     }
 
+    // Geofencing: driver must be within 500m of origin to start
+    const driver = await this.userRepository.findOne({ where: { id: driverId } });
+    if (driver?.latitude && driver?.longitude) {
+      const distanceToOrigin = this.calculateHaversineDistance(
+        Number(driver.latitude),
+        Number(driver.longitude),
+        Number(trip.originLat),
+        Number(trip.originLng),
+      );
+      const GEOFENCE_RADIUS_KM = 0.5; // 500 meters
+      if (distanceToOrigin > GEOFENCE_RADIUS_KM) {
+        throw new BadRequestException(
+          `Debes estar dentro de los 500m del punto de carga para iniciar el viaje. Distancia actual: ${Math.round(distanceToOrigin * 1000)}m`,
+        );
+      }
+    }
+
     trip.status = TripStatus.IN_TRANSIT;
     trip.pickedUpAt = new Date();
 
@@ -1043,6 +1162,54 @@ export class TripsService {
     }
     trip.cartaDePorteUrl = url;
     await this.tripRepository.save(trip);
+  }
+
+  async addTripDocument(tripId: string, type: string, url: string, filename: string): Promise<TripDocument> {
+    const trip = await this.tripRepository.findOne({ where: { id: tripId } });
+    if (!trip) throw new NotFoundException('Viaje no encontrado');
+
+    const documentType = Object.values(DocumentType).includes(type as DocumentType)
+      ? (type as DocumentType)
+      : DocumentType.OTRO;
+
+    const doc = this.tripDocumentRepository.create({
+      tripId,
+      type: documentType,
+      url,
+      filename,
+    });
+    return this.tripDocumentRepository.save(doc);
+  }
+
+  async getTripDocuments(tripId: string): Promise<TripDocument[]> {
+    return this.tripDocumentRepository.find({
+      where: { tripId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async confirmUnload(tripId: string, userId: string): Promise<Trip> {
+    const trip = await this.tripRepository.findOne({
+      where: { id: tripId },
+      relations: ['requester', 'driver'],
+    });
+
+    if (!trip) throw new NotFoundException('Viaje no encontrado');
+    if (trip.requesterId !== userId) throw new ForbiddenException('Solo el solicitante puede confirmar la descarga');
+    if (trip.status !== TripStatus.DELIVERED) throw new BadRequestException('El viaje debe estar en estado DELIVERED');
+    if (trip.unloadConfirmedAt) throw new BadRequestException('La descarga ya fue confirmada');
+
+    trip.unloadConfirmedAt = new Date();
+    trip.unloadConfirmedById = userId;
+
+    const savedTrip = await this.tripRepository.save(trip);
+
+    if (trip.driverId) {
+      this.eventsGateway.emitToUser(trip.driverId, 'trip:unload_confirmed', savedTrip);
+    }
+    this.eventsGateway.emitTripUpdate(tripId, 'trip:unload_confirmed', savedTrip);
+
+    return savedTrip;
   }
 
   async updateDriverLocation(
@@ -1561,5 +1728,36 @@ export class TripsService {
         address: d.address,
       })),
     };
+  }
+
+  async driverRateTrip(tripId: string, driverId: string, dto: DriverRateTripDto): Promise<Trip> {
+    const trip = await this.tripRepository.findOne({
+      where: { id: tripId },
+      relations: ['requester', 'driver'],
+    });
+
+    if (!trip) throw new NotFoundException('Viaje no encontrado');
+    if (trip.driverId !== driverId) throw new ForbiddenException('No eres el conductor de este viaje');
+    if (trip.status !== TripStatus.DELIVERED) throw new BadRequestException('El viaje debe estar completado');
+    if (trip.driverRating) throw new BadRequestException('Ya calificaste este viaje');
+
+    trip.driverRating = dto.rating;
+    trip.driverRatingComments = dto.comments || null;
+    trip.driverRatedAt = new Date();
+
+    return this.tripRepository.save(trip);
+  }
+
+  private calculateHaversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371;
+    const dLat = this.toRad(lat2 - lat1);
+    const dLng = this.toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  private toRad(deg: number): number {
+    return deg * (Math.PI / 180);
   }
 }

@@ -1,0 +1,6 @@
+export enum DocumentType {
+  CARTA_DE_PORTE = 'CARTA_DE_PORTE',
+  REMITO = 'REMITO',
+  REMITO_ELECTRONICO = 'REMITO_ELECTRONICO',
+  OTRO = 'OTRO',
+}

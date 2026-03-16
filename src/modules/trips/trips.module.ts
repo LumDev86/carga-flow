@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { Trip } from './entities/trip.entity';
+import { TripDocument } from './entities/trip-document.entity';
 import { TripsController } from './trips.controller';
 import { TripsService } from './trips.service';
 import { AssignmentProcessor } from './processors/assignment.processor';
@@ -37,7 +38,7 @@ const queueProvider = isRedisConfigured()
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Trip, User]),
+    TypeOrmModule.forFeature([Trip, User, TripDocument]),
     ...bullImports,
     EventsModule,
     GeolocationModule,

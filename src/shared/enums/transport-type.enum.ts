@@ -6,4 +6,7 @@ export enum TransportType {
   SEMI_REMOLQUE = 'SEMI_REMOLQUE',
   ACOPLADO = 'ACOPLADO',
   BALANCIN = 'BALANCIN',
+  CHASIS = 'CHASIS',
+  BATEA = 'BATEA',
+  BITREN = 'BITREN',
 }
