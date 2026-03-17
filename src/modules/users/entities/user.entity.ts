@@ -196,12 +196,6 @@ export class User {
   @Column({ nullable: true, type: 'varchar', length: 200, name: 'bank_holder_name' })
   bankHolderName: string | null;
 
-  @Column({
-    default: false,
-    name: 'has_signed_intermediation_auth',
-  })
-  hasSignedIntermediationAuth: boolean;
-
   @Column({ nullable: true, type: 'varchar', length: 200, name: 'push_token' })
   pushToken: string | null;
 
