@@ -8,6 +8,7 @@ import {
   Matches,
   IsEnum,
   IsOptional,
+  IsBoolean,
 } from 'class-validator';
 import { UserRole } from '../../../shared/enums/user-role.enum';
 import { AccountType } from '../../../shared/enums/account-type.enum';
@@ -137,4 +138,13 @@ export class RegisterDto {
   @IsOptional()
   @MaxLength(20)
   cuit?: string;
+
+  @ApiProperty({
+    example: true,
+    description: 'Aceptación de la declaración jurada del dador de carga (6 puntos)',
+    required: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  hasAcceptedDeclaration?: boolean;
 }

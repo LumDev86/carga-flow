@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Body,
   Patch,
   Param,
@@ -17,6 +18,7 @@ import {
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
+import { SignIntermediationDto } from './dto/sign-intermediation.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -65,6 +67,24 @@ export class UsersController {
     @Body() updateLocationDto: UpdateLocationDto,
   ) {
     return await this.usersService.updateLocation(userId, updateLocationDto);
+  }
+
+  @Post('intermediation-auth')
+  @ApiOperation({ summary: 'Firmar autorización de intermediación de flete' })
+  @ApiResponse({ status: 200, description: 'Autorización firmada exitosamente' })
+  @ApiResponse({ status: 400, description: 'Ya fue firmada previamente' })
+  async signIntermediationAuth(
+    @CurrentUser('id') userId: string,
+    @Body() dto: SignIntermediationDto,
+  ) {
+    return await this.usersService.signIntermediationAuth(userId, dto);
+  }
+
+  @Get('intermediation-auth/status')
+  @ApiOperation({ summary: 'Consultar estado de autorización de intermediación' })
+  @ApiResponse({ status: 200, description: 'Estado de autorización' })
+  async getIntermediationAuthStatus(@CurrentUser('id') userId: string) {
+    return await this.usersService.getIntermediationAuthStatus(userId);
   }
 
   @Get(':id')

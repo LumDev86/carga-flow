@@ -2,6 +2,7 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -32,6 +33,7 @@ export class UsersService {
     const user = this.userRepository.create({
       ...createUserDto,
       password: hashedPassword,
+      declarationAcceptedAt: createUserDto.hasAcceptedDeclaration ? new Date() : null,
     });
 
     return await this.userRepository.save(user);
@@ -167,5 +169,44 @@ export class UsersService {
     user.address = updateLocationDto.address || null;
 
     return await this.userRepository.save(user);
+  }
+
+  async signIntermediationAuth(userId: string, dto: {
+    companyName: string;
+    companyCuit: string;
+    representativeName?: string;
+    representativeRole?: string;
+  }): Promise<{ message: string }> {
+    const user = await this.findOne(userId);
+
+    if (user.hasSignedIntermediationAuth) {
+      throw new BadRequestException('La autorización de intermediación ya fue firmada');
+    }
+
+    user.hasSignedIntermediationAuth = true;
+    user.intermediationSignedAt = new Date();
+    user.intermediationCompanyName = dto.companyName;
+    user.intermediationCompanyCuit = dto.companyCuit;
+    user.intermediationRepresentativeName = dto.representativeName || null;
+    user.intermediationRepresentativeRole = dto.representativeRole || null;
+
+    await this.userRepository.save(user);
+
+    return { message: 'Autorización de intermediación firmada exitosamente' };
+  }
+
+  async getIntermediationAuthStatus(userId: string): Promise<{
+    isActive: boolean;
+    signedAt: Date | null;
+    companyName: string | null;
+    companyCuit: string | null;
+  }> {
+    const user = await this.findOne(userId);
+    return {
+      isActive: user.hasSignedIntermediationAuth,
+      signedAt: user.intermediationSignedAt,
+      companyName: user.intermediationCompanyName,
+      companyCuit: user.intermediationCompanyCuit,
+    };
   }
 }

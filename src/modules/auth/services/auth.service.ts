@@ -232,6 +232,8 @@ export class AuthService {
       phoneVerified: user.phoneVerified,
       walletBalance: user.walletBalance.toString(),
       avatarUrl: user.avatarUrl || null,
+      hasAcceptedDeclaration: user.hasAcceptedDeclaration,
+      hasSignedIntermediationAuth: user.hasSignedIntermediationAuth,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

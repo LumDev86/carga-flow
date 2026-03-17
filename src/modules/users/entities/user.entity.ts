@@ -205,6 +205,32 @@ export class User {
   @Column({ nullable: true, type: 'varchar', length: 200, name: 'push_token' })
   pushToken: string | null;
 
+  // --- Declaración jurada (6 puntos, aceptada en registro) ---
+  @Column({ default: false, name: 'has_accepted_declaration' })
+  hasAcceptedDeclaration: boolean;
+
+  @Column({ nullable: true, type: 'timestamp', name: 'declaration_accepted_at' })
+  declarationAcceptedAt: Date | null;
+
+  // --- Autorización de intermediación de flete ---
+  @Column({ default: false, name: 'has_signed_intermediation_auth' })
+  hasSignedIntermediationAuth: boolean;
+
+  @Column({ nullable: true, type: 'timestamp', name: 'intermediation_signed_at' })
+  intermediationSignedAt: Date | null;
+
+  @Column({ nullable: true, type: 'varchar', length: 255, name: 'intermediation_company_name' })
+  intermediationCompanyName: string | null;
+
+  @Column({ nullable: true, type: 'varchar', length: 20, name: 'intermediation_company_cuit' })
+  intermediationCompanyCuit: string | null;
+
+  @Column({ nullable: true, type: 'varchar', length: 255, name: 'intermediation_representative_name' })
+  intermediationRepresentativeName: string | null;
+
+  @Column({ nullable: true, type: 'varchar', length: 100, name: 'intermediation_representative_role' })
+  intermediationRepresentativeRole: string | null;
+
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens: RefreshToken[];
 

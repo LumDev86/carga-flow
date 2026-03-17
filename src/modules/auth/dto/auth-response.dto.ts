@@ -36,6 +36,12 @@ export class UserResponseDto {
   @ApiProperty({ example: 'https://example.com/avatar.jpg', nullable: true })
   avatarUrl: string | null;
 
+  @ApiProperty({ example: false })
+  hasAcceptedDeclaration: boolean;
+
+  @ApiProperty({ example: false })
+  hasSignedIntermediationAuth: boolean;
+
   @ApiProperty({ example: '2025-12-22T14:30:00.000Z' })
   createdAt: Date;
 

@@ -6,6 +6,7 @@ import {
   MinLength,
   IsEnum,
   IsOptional,
+  IsBoolean,
 } from 'class-validator';
 import { UserRole } from '../../../shared/enums/user-role.enum';
 import { AccountType } from '../../../shared/enums/account-type.enum';
@@ -71,4 +72,9 @@ export class CreateUserDto {
   @IsString()
   @IsOptional()
   cuit?: string;
+
+  @ApiProperty({ required: false, description: 'Aceptación de declaración jurada del dador de carga' })
+  @IsBoolean()
+  @IsOptional()
+  hasAcceptedDeclaration?: boolean;
 }
