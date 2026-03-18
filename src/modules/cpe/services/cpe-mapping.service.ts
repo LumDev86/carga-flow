@@ -90,12 +90,12 @@ export class CpeMappingService {
       },
       origen: {
         codProvincia: this.mapProvinceToAfipCode(trip.originState),
-        codLocalidad: 0, // Se completa con datos de referencia AFIP
+        codLocalidad: 0, // TODO: resolver con tabla de localidades AFIP cuando esté disponible
         planta: null,
       },
       destino: {
         codProvincia: this.mapProvinceToAfipCode(trip.destinationState),
-        codLocalidad: 0,
+        codLocalidad: 0, // TODO: resolver con tabla de localidades AFIP cuando esté disponible
         planta: null,
       },
       datosGrano: {

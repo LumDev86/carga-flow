@@ -96,6 +96,11 @@ export class CpeService {
       throw new BadRequestException('El chofer no tiene vehículo activo registrado');
     }
 
+    // Validate driver has CUIT
+    if (!trip.driver?.cuit) {
+      throw new BadRequestException('El chofer no tiene CUIT registrado. Es obligatorio para la CPE.');
+    }
+
     // 7. Verify delegation — busca por el requesterId (el dador), no por quien llama
     const delegation = await this.delegationService.getDelegationForUser(trip.requesterId);
     if (!delegation) {

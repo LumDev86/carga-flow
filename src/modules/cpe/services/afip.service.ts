@@ -34,11 +34,14 @@ export class AfipService implements OnModuleInit {
     }
 
     try {
+      const accessToken = this.configService.get<string>('AFIP_SDK_ACCESS_TOKEN');
+
       this.afip = new Afip({
         CUIT: this.cuit,
         cert: certPath,
         key: keyPath,
         production: this.isProduction,
+        ...(accessToken ? { access_token: accessToken } : {}),
       });
 
       // Crear instancia genérica de WebService para WSCPE
