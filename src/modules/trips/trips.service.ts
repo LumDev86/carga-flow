@@ -394,10 +394,10 @@ export class TripsService {
 
     const docValidationClause = `
           AND v.approval_status = 'APPROVED'
-          AND (v.insurance_expiry_date IS NULL OR v.insurance_expiry_date > CURRENT_DATE)
-          AND (v.license_expiry_date IS NULL OR v.license_expiry_date > CURRENT_DATE)
-          AND (v.art_expiry_date IS NULL OR v.art_expiry_date > CURRENT_DATE)
-          AND (v.rc_expiry_date IS NULL OR v.rc_expiry_date > CURRENT_DATE)`;
+          AND v.insurance_expiry_date IS NOT NULL AND v.insurance_expiry_date > CURRENT_DATE
+          AND v.license_expiry_date IS NOT NULL AND v.license_expiry_date > CURRENT_DATE
+          AND v.art_expiry_date IS NOT NULL AND v.art_expiry_date > CURRENT_DATE
+          AND v.rc_expiry_date IS NOT NULL AND v.rc_expiry_date > CURRENT_DATE`;
 
     if (requiredEquipment) {
       qb.andWhere(
@@ -1891,7 +1891,16 @@ export class TripsService {
     return this.tripIncidentRepository.save(incident);
   }
 
-  async getIncidents(tripId: string): Promise<TripIncident[]> {
+  async getIncidents(tripId: string, userId?: string): Promise<TripIncident[]> {
+    if (userId) {
+      const trip = await this.tripRepository.findOne({ where: { id: tripId } });
+      if (!trip) {
+        throw new NotFoundException('Viaje no encontrado');
+      }
+      if (trip.requesterId !== userId && trip.driverId !== userId) {
+        throw new ForbiddenException('No tenés acceso a los incidentes de este viaje');
+      }
+    }
     return this.tripIncidentRepository.find({
       where: { tripId },
       order: { createdAt: 'DESC' },
@@ -1913,6 +1922,10 @@ export class TripsService {
 
     if (incident.reportedById !== userId) {
       throw new ForbiddenException('Solo quien reportó el incidente puede subir fotos');
+    }
+
+    if (incident.photos.length >= 5) {
+      throw new BadRequestException('Máximo 5 fotos por incidente');
     }
 
     incident.photos = [...incident.photos, photoUrl];
@@ -1963,6 +1976,10 @@ export class TripsService {
 
     if (!incident) {
       throw new NotFoundException('Incidente no encontrado');
+    }
+
+    if (incident.status === IncidentStatus.RESOLVED) {
+      throw new BadRequestException('Este incidente ya fue resuelto');
     }
 
     incident.status = IncidentStatus.RESOLVED;

@@ -132,6 +132,14 @@ export class VehiclesService {
       throw new BadRequestException('La fecha de vencimiento es obligatoria');
     }
 
+    if (expiryDate && !/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) {
+      throw new BadRequestException('La fecha debe tener formato AAAA-MM-DD');
+    }
+
+    if (expiryDate && isNaN(new Date(expiryDate).getTime())) {
+      throw new BadRequestException('La fecha de vencimiento no es válida');
+    }
+
     const vehicle = await this.findOne(vehicleId, userId);
 
     if (vehicle[field]) {
@@ -164,27 +172,35 @@ export class VehiclesService {
     }
 
     const today = new Date().toISOString().split('T')[0];
-    const expiredDocs: string[] = [];
+    const problems: string[] = [];
 
-    const checks: { field: ExpiryDateField; label: string }[] = [
-      { field: 'insuranceExpiryDate', label: 'Seguro de Carga' },
-      { field: 'licenseExpiryDate', label: 'Licencia de Conducir' },
-      { field: 'artExpiryDate', label: 'ART' },
-      { field: 'rcExpiryDate', label: 'Responsabilidad Civil' },
+    const docChecks: { photoField: string; expiryField: ExpiryDateField; label: string }[] = [
+      { photoField: 'insurancePhotoUrl', expiryField: 'insuranceExpiryDate', label: 'Seguro de Carga' },
+      { photoField: 'licenseFrontUrl', expiryField: 'licenseExpiryDate', label: 'Licencia de Conducir' },
+      { photoField: 'artPhotoUrl', expiryField: 'artExpiryDate', label: 'ART' },
+      { photoField: 'rcPhotoUrl', expiryField: 'rcExpiryDate', label: 'Responsabilidad Civil' },
     ];
 
-    for (const { field, label } of checks) {
-      const dateValue = vehicle[field];
-      if (dateValue && dateValue < today) {
+    for (const { photoField, expiryField, label } of docChecks) {
+      if (!vehicle[photoField]) {
+        problems.push(`${label} (no cargado)`);
+        continue;
+      }
+      const dateValue = vehicle[expiryField];
+      if (!dateValue) {
+        problems.push(`${label} (sin fecha de vencimiento)`);
+        continue;
+      }
+      if (dateValue < today) {
         const d = new Date(dateValue);
         const formatted = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
-        expiredDocs.push(`${label} (venció el ${formatted})`);
+        problems.push(`${label} (venció el ${formatted})`);
       }
     }
 
-    if (expiredDocs.length > 0) {
+    if (problems.length > 0) {
       throw new BadRequestException(
-        `No podés aceptar viajes. Documentos vencidos: ${expiredDocs.join(', ')}`,
+        `No podés aceptar viajes. Documentación incompleta o vencida: ${problems.join(', ')}`,
       );
     }
   }

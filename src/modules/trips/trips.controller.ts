@@ -298,8 +298,8 @@ export class TripsController {
 
   @Get(':id/incidents')
   @ApiOperation({ summary: 'Listar incidentes de un viaje' })
-  getIncidents(@Param('id') id: string) {
-    return this.tripsService.getIncidents(id);
+  getIncidents(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.tripsService.getIncidents(id, userId);
   }
 
   @Post('incidents/:incidentId/photos')

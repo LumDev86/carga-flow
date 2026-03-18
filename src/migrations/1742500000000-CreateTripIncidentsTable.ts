@@ -3,11 +3,19 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 export class CreateTripIncidentsTable1742500000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-      CREATE TYPE incident_type_enum AS ENUM ('ROTURA', 'PROBLEMA_MECANICO', 'DEMORA_PUERTO', 'ACCIDENTE', 'OTRO')
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'incident_type_enum') THEN
+          CREATE TYPE incident_type_enum AS ENUM ('ROTURA', 'PROBLEMA_MECANICO', 'DEMORA_PUERTO', 'ACCIDENTE', 'OTRO');
+        END IF;
+      END$$
     `);
 
     await queryRunner.query(`
-      CREATE TYPE incident_status_enum AS ENUM ('REPORTED', 'ACKNOWLEDGED', 'RESOLVED')
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'incident_status_enum') THEN
+          CREATE TYPE incident_status_enum AS ENUM ('REPORTED', 'ACKNOWLEDGED', 'RESOLVED');
+        END IF;
+      END$$
     `);
 
     await queryRunner.query(`
