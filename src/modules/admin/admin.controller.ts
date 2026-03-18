@@ -8,6 +8,7 @@ import {
   UseGuards,
   NotFoundException,
 } from '@nestjs/common';
+import { ResolveIncidentDto } from '../trips/dto/resolve-incident.dto';
 import {
   ApiTags,
   ApiOperation,
@@ -149,6 +150,13 @@ export class AdminController {
     return this.adminService.findAllVehicles({ page, limit, type, search, approvalStatus });
   }
 
+  @Get('vehicles/:id/approval-readiness')
+  @ApiOperation({ summary: 'Verificar si un vehículo tiene toda la documentación para aprobación' })
+  @ApiResponse({ status: 200, description: 'Estado de preparación para aprobación' })
+  async getApprovalReadiness(@Param('id') id: string) {
+    return this.adminService.getApprovalReadiness(id);
+  }
+
   @Get('vehicles/:id')
   @ApiOperation({ summary: 'Obtener detalle de vehículo por ID' })
   @ApiResponse({ status: 200, description: 'Detalle del vehículo' })
@@ -215,6 +223,34 @@ export class AdminController {
     @Query('limit') limit?: number,
   ) {
     return this.adminService.findWalletTransactions(userId, { page, limit });
+  }
+
+  // ---- Incidents ----
+
+  @Get('incidents')
+  @ApiOperation({ summary: 'Listar incidentes reportados' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'status', required: false, type: String })
+  @ApiQuery({ name: 'type', required: false, type: String })
+  @ApiResponse({ status: 200, description: 'Lista de incidentes' })
+  async getIncidents(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('status') status?: string,
+    @Query('type') type?: string,
+  ) {
+    return this.adminService.getIncidents({ page, limit, status, type });
+  }
+
+  @Patch('incidents/:id/resolve')
+  @ApiOperation({ summary: 'Resolver un incidente' })
+  @ApiResponse({ status: 200, description: 'Incidente resuelto' })
+  async resolveIncident(
+    @Param('id') id: string,
+    @Body() dto: ResolveIncidentDto,
+  ) {
+    return this.adminService.resolveIncident(id, dto.adminNotes);
   }
 
   // ---- Withdrawals ----

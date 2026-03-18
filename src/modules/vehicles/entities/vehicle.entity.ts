@@ -58,11 +58,29 @@ export class Vehicle {
   @Column({ type: 'varchar', length: 500, nullable: true, name: 'insurance_photo_url' })
   insurancePhotoUrl: string | null;
 
+  @Column({ type: 'date', nullable: true, name: 'insurance_expiry_date' })
+  insuranceExpiryDate: string | null;
+
   @Column({ type: 'varchar', length: 500, nullable: true, name: 'license_front_url' })
   licenseFrontUrl: string | null;
 
   @Column({ type: 'varchar', length: 500, nullable: true, name: 'license_back_url' })
   licenseBackUrl: string | null;
+
+  @Column({ type: 'date', nullable: true, name: 'license_expiry_date' })
+  licenseExpiryDate: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true, name: 'art_photo_url' })
+  artPhotoUrl: string | null;
+
+  @Column({ type: 'date', nullable: true, name: 'art_expiry_date' })
+  artExpiryDate: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true, name: 'rc_photo_url' })
+  rcPhotoUrl: string | null;
+
+  @Column({ type: 'date', nullable: true, name: 'rc_expiry_date' })
+  rcExpiryDate: string | null;
 
   @Column({ type: 'int', nullable: true, name: 'axle_count' })
   axleCount: number | null;

@@ -1,0 +1,5 @@
+export enum IncidentStatus {
+  REPORTED = 'REPORTED',
+  ACKNOWLEDGED = 'ACKNOWLEDGED',
+  RESOLVED = 'RESOLVED',
+}

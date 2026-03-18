@@ -9,6 +9,7 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
@@ -73,8 +74,10 @@ export class VehiclesController {
     @CurrentUser('id') userId: string,
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
+    @Body('expiryDate') expiryDate: string,
   ) {
-    return this.vehiclesService.uploadDocument(id, userId, 'insurancePhotoUrl', file);
+    if (!file) throw new BadRequestException('No se proporcionó ningún archivo');
+    return this.vehiclesService.uploadDocument(id, userId, 'insurancePhotoUrl', file, expiryDate);
   }
 
   @Post(':id/license-front')
@@ -85,8 +88,10 @@ export class VehiclesController {
     @CurrentUser('id') userId: string,
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
+    @Body('expiryDate') expiryDate: string,
   ) {
-    return this.vehiclesService.uploadDocument(id, userId, 'licenseFrontUrl', file);
+    if (!file) throw new BadRequestException('No se proporcionó ningún archivo');
+    return this.vehiclesService.uploadDocument(id, userId, 'licenseFrontUrl', file, expiryDate);
   }
 
   @Post(':id/license-back')
@@ -98,6 +103,35 @@ export class VehiclesController {
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    if (!file) throw new BadRequestException('No se proporcionó ningún archivo');
     return this.vehiclesService.uploadDocument(id, userId, 'licenseBackUrl', file);
+  }
+
+  @Post(':id/art')
+  @ApiOperation({ summary: 'Subir foto de ART' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadArt(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('expiryDate') expiryDate: string,
+  ) {
+    if (!file) throw new BadRequestException('No se proporcionó ningún archivo');
+    return this.vehiclesService.uploadDocument(id, userId, 'artPhotoUrl', file, expiryDate);
+  }
+
+  @Post(':id/rc')
+  @ApiOperation({ summary: 'Subir foto de Responsabilidad Civil' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadRc(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('expiryDate') expiryDate: string,
+  ) {
+    if (!file) throw new BadRequestException('No se proporcionó ningún archivo');
+    return this.vehiclesService.uploadDocument(id, userId, 'rcPhotoUrl', file, expiryDate);
   }
 }

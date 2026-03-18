@@ -12,7 +12,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { TripsService } from './trips.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { CreateTripDto } from './dto/create-trip.dto';
@@ -23,6 +23,7 @@ import { RateTripDto } from './dto/rate-trip.dto';
 import { DriverRateTripDto } from './dto/driver-rate-trip.dto';
 import { TripFiltersDto } from './dto/trip-filters.dto';
 import { UpdateDriverLocationDto } from './dto/update-location.dto';
+import { CreateIncidentDto } from './dto/create-incident.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -219,6 +220,22 @@ export class TripsController {
     return this.tripsService.confirmUnload(id, userId);
   }
 
+  @Post(':id/seal-photo')
+  @Roles(UserRole.CHOFER)
+  @ApiOperation({ summary: 'Subir foto del precinto (obligatorio para granos)' })
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadSealPhoto(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo');
+    }
+    const publicUrl = await this.storageService.uploadFile(file, `trips/${id}/seal`);
+    return this.tripsService.setSealPhoto(id, userId, publicUrl);
+  }
+
   @Post(':id/evidence')
   @Roles(UserRole.CHOFER)
   @ApiOperation({ summary: 'Subir fotos de evidencia' })
@@ -266,6 +283,40 @@ export class TripsController {
       filename: file.originalname,
       mimetype: file.mimetype,
     };
+  }
+
+  @Post(':id/incidents')
+  @Roles(UserRole.CHOFER)
+  @ApiOperation({ summary: 'Reportar incidente en un viaje' })
+  createIncident(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: CreateIncidentDto,
+  ) {
+    return this.tripsService.createIncident(id, userId, dto.type, dto.description);
+  }
+
+  @Get(':id/incidents')
+  @ApiOperation({ summary: 'Listar incidentes de un viaje' })
+  getIncidents(@Param('id') id: string) {
+    return this.tripsService.getIncidents(id);
+  }
+
+  @Post('incidents/:incidentId/photos')
+  @Roles(UserRole.CHOFER)
+  @ApiOperation({ summary: 'Subir foto a un incidente' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadIncidentPhoto(
+    @CurrentUser('id') userId: string,
+    @Param('incidentId') incidentId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo');
+    }
+    const publicUrl = await this.storageService.uploadFile(file, `incidents/${incidentId}`);
+    return this.tripsService.uploadIncidentPhoto(incidentId, userId, publicUrl);
   }
 
   @Patch(':id/location')

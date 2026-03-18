@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Trip } from '../trips/entities/trip.entity';
@@ -276,9 +276,53 @@ export class AdminService {
     });
   }
 
+  private getVehicleMissingFields(vehicle: Vehicle): string[] {
+    const requiredFields: { field: string; label: string }[] = [
+      { field: 'insurancePhotoUrl', label: 'Foto póliza de seguro' },
+      { field: 'insuranceExpiryDate', label: 'Fecha vencimiento seguro' },
+      { field: 'licenseFrontUrl', label: 'Foto frente licencia' },
+      { field: 'licenseBackUrl', label: 'Foto dorso licencia' },
+      { field: 'licenseExpiryDate', label: 'Fecha vencimiento licencia' },
+      { field: 'artPhotoUrl', label: 'Foto ART' },
+      { field: 'artExpiryDate', label: 'Fecha vencimiento ART' },
+      { field: 'rcPhotoUrl', label: 'Foto Responsabilidad Civil' },
+      { field: 'rcExpiryDate', label: 'Fecha vencimiento RC' },
+    ];
+
+    return requiredFields
+      .filter(({ field }) => !vehicle[field])
+      .map(({ label }) => label);
+  }
+
+  async getApprovalReadiness(id: string) {
+    const vehicle = await this.vehicleRepository.findOne({ where: { id } });
+    if (!vehicle) {
+      throw new NotFoundException('Vehículo no encontrado');
+    }
+
+    const missingFields = this.getVehicleMissingFields(vehicle);
+    const totalRequired = 9;
+
+    return {
+      vehicleId: id,
+      isReady: missingFields.length === 0,
+      missingFields,
+      totalRequired,
+      completedCount: totalRequired - missingFields.length,
+    };
+  }
+
   async approveVehicle(id: string) {
     const vehicle = await this.vehicleRepository.findOne({ where: { id } });
     if (!vehicle) return null;
+
+    const missingFields = this.getVehicleMissingFields(vehicle);
+    if (missingFields.length > 0) {
+      throw new BadRequestException({
+        message: 'No se puede aprobar el vehículo. Faltan documentos obligatorios.',
+        missingFields,
+      });
+    }
 
     vehicle.approvalStatus = VehicleStatus.APPROVED;
     vehicle.rejectionReason = null;
@@ -405,6 +449,16 @@ export class AdminService {
     });
 
     return withdrawal;
+  }
+
+  // ---- Incidents ----
+
+  async getIncidents(filters: { page?: number; limit?: number; status?: string; type?: string }) {
+    return this.tripsService.getAllIncidents(filters);
+  }
+
+  async resolveIncident(incidentId: string, adminNotes?: string) {
+    return this.tripsService.resolveIncident(incidentId, adminNotes);
   }
 
   async rejectWithdrawal(withdrawalId: string, dto: RejectWithdrawalDto) {

@@ -185,6 +185,9 @@ export class Trip {
   @Column({ name: 'carta_de_porte_url', type: 'varchar', nullable: true })
   cartaDePorteUrl: string | null;
 
+  @Column({ name: 'seal_photo_url', type: 'varchar', length: 500, nullable: true })
+  sealPhotoUrl: string | null;
+
   // --- Flete payment tracking ---
   @Column({ name: 'flete_received_at', type: 'timestamp', nullable: true })
   fleteReceivedAt: Date | null;

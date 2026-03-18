@@ -13,8 +13,19 @@ import { Vehicle } from './entities/vehicle.entity';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import { StorageService } from '../../common/storage/storage.service';
+import { VehicleStatus } from '../../shared/enums/vehicle-status.enum';
 
-type DocumentField = 'insurancePhotoUrl' | 'licenseFrontUrl' | 'licenseBackUrl';
+type DocumentField = 'insurancePhotoUrl' | 'licenseFrontUrl' | 'licenseBackUrl' | 'artPhotoUrl' | 'rcPhotoUrl';
+
+type ExpiryDateField = 'insuranceExpiryDate' | 'licenseExpiryDate' | 'artExpiryDate' | 'rcExpiryDate';
+
+const DOCUMENT_EXPIRY_MAP: Record<DocumentField, ExpiryDateField | null> = {
+  insurancePhotoUrl: 'insuranceExpiryDate',
+  licenseFrontUrl: 'licenseExpiryDate',
+  licenseBackUrl: null,
+  artPhotoUrl: 'artExpiryDate',
+  rcPhotoUrl: 'rcExpiryDate',
+};
 
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 const cacheKey = (userId: string) => `vehicles:user:${userId}`;
@@ -113,7 +124,14 @@ export class VehiclesService {
     userId: string,
     field: DocumentField,
     file: Express.Multer.File,
+    expiryDate?: string,
   ): Promise<Vehicle> {
+    const expiryField = DOCUMENT_EXPIRY_MAP[field];
+
+    if (expiryField && !expiryDate) {
+      throw new BadRequestException('La fecha de vencimiento es obligatoria');
+    }
+
     const vehicle = await this.findOne(vehicleId, userId);
 
     if (vehicle[field]) {
@@ -124,9 +142,51 @@ export class VehiclesService {
     const url = await this.storageService.uploadFile(file, folder);
 
     vehicle[field] = url;
+    if (expiryField && expiryDate) {
+      vehicle[expiryField] = expiryDate;
+    }
     const saved = await this.vehicleRepository.save(vehicle);
     await this.invalidateCache(userId);
     return saved;
+  }
+
+  async validateDriverDocuments(userId: string): Promise<void> {
+    const vehicle = await this.vehicleRepository.findOne({
+      where: { userId, isActive: true },
+    });
+
+    if (!vehicle) {
+      throw new BadRequestException('No tenés un vehículo activo registrado');
+    }
+
+    if (vehicle.approvalStatus !== VehicleStatus.APPROVED) {
+      throw new BadRequestException('Tu vehículo no está aprobado');
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const expiredDocs: string[] = [];
+
+    const checks: { field: ExpiryDateField; label: string }[] = [
+      { field: 'insuranceExpiryDate', label: 'Seguro de Carga' },
+      { field: 'licenseExpiryDate', label: 'Licencia de Conducir' },
+      { field: 'artExpiryDate', label: 'ART' },
+      { field: 'rcExpiryDate', label: 'Responsabilidad Civil' },
+    ];
+
+    for (const { field, label } of checks) {
+      const dateValue = vehicle[field];
+      if (dateValue && dateValue < today) {
+        const d = new Date(dateValue);
+        const formatted = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+        expiredDocs.push(`${label} (venció el ${formatted})`);
+      }
+    }
+
+    if (expiredDocs.length > 0) {
+      throw new BadRequestException(
+        `No podés aceptar viajes. Documentos vencidos: ${expiredDocs.join(', ')}`,
+      );
+    }
   }
 
   async setActive(id: string, userId: string): Promise<Vehicle> {

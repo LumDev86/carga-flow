@@ -9,3 +9,5 @@ export * from './vehicle-status.enum';
 export * from './payment-method.enum';
 export * from './cpe-status.enum';
 export * from './cpe-type.enum';
+export * from './incident-type.enum';
+export * from './incident-status.enum';

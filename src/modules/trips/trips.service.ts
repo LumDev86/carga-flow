@@ -13,6 +13,9 @@ import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { Trip } from './entities/trip.entity';
 import { TripDocument } from './entities/trip-document.entity';
+import { TripIncident } from './entities/trip-incident.entity';
+import { IncidentType } from '../../shared/enums/incident-type.enum';
+import { IncidentStatus } from '../../shared/enums/incident-status.enum';
 import { User } from '../users/entities/user.entity';
 import { EventsGateway } from '../events/events.gateway';
 import { GeolocationService } from '../geolocation/geolocation.service';
@@ -36,6 +39,7 @@ import { UserStatus } from '../../shared/enums/user-status.enum';
 import { CargoType } from '../../shared/enums/cargo-type.enum';
 import { DocumentType } from '../../shared/enums/document-type.enum';
 import { EquipmentType } from '../../shared/enums/equipment-type.enum';
+import { VehiclesService } from '../vehicles/vehicles.service';
 import * as bcrypt from 'bcrypt';
 
 const ASSIGNMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -59,12 +63,15 @@ export class TripsService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(TripDocument)
     private readonly tripDocumentRepository: Repository<TripDocument>,
+    @InjectRepository(TripIncident)
+    private readonly tripIncidentRepository: Repository<TripIncident>,
     private readonly eventsGateway: EventsGateway,
     private readonly geolocationService: GeolocationService,
     private readonly pushNotificationService: PushNotificationService,
     private readonly tariffService: TariffService,
     private readonly walletService: WalletService,
     private readonly paymentsService: PaymentsService,
+    private readonly vehiclesService: VehiclesService,
     @Optional()
     @Inject('TRIPS_QUEUE')
     tripsQueueFallback: Queue | null,
@@ -385,19 +392,29 @@ export class TripsService {
       .andWhere('user.latitude IS NOT NULL')
       .andWhere('user.longitude IS NOT NULL');
 
+    const docValidationClause = `
+          AND v.approval_status = 'APPROVED'
+          AND (v.insurance_expiry_date IS NULL OR v.insurance_expiry_date > CURRENT_DATE)
+          AND (v.license_expiry_date IS NULL OR v.license_expiry_date > CURRENT_DATE)
+          AND (v.art_expiry_date IS NULL OR v.art_expiry_date > CURRENT_DATE)
+          AND (v.rc_expiry_date IS NULL OR v.rc_expiry_date > CURRENT_DATE)`;
+
     if (requiredEquipment) {
       qb.andWhere(
         `user.id IN (
           SELECT v.user_id FROM vehicles v
           WHERE v.is_active = true
           AND v.equipment_type IN (:...equipmentTypes)
+          ${docValidationClause}
         )`,
         { equipmentTypes: requiredEquipment },
       );
     } else {
       qb.andWhere(
         `user.id IN (
-          SELECT v.user_id FROM vehicles v WHERE v.is_active = true
+          SELECT v.user_id FROM vehicles v
+          WHERE v.is_active = true
+          ${docValidationClause}
         )`,
       );
     }
@@ -671,6 +688,9 @@ export class TripsService {
         );
       }
 
+      // Validate driver documents (active vehicle, approved, not expired)
+      await this.vehiclesService.validateDriverDocuments(driverId);
+
       trip.status = TripStatus.ACCEPTED;
       trip.driverId = driverId;
       trip.assignedDriverId = driverId;
@@ -831,6 +851,16 @@ export class TripsService {
           `Debes estar dentro de los 500m del punto de carga para iniciar el viaje. Distancia actual: ${Math.round(distanceToOrigin * 1000)}m`,
         );
       }
+    }
+
+    // For grain cargo, seal photo is required before starting
+    if (
+      (trip.cargoType === CargoType.GRANOS_DERIVADOS || trip.cargoType === CargoType.GRANEL) &&
+      !trip.sealPhotoUrl
+    ) {
+      throw new BadRequestException(
+        'Debés subir la foto del precinto antes de iniciar el viaje',
+      );
     }
 
     trip.status = TripStatus.IN_TRANSIT;
@@ -1200,6 +1230,35 @@ export class TripsService {
     }
     trip.cartaDePorteUrl = url;
     await this.tripRepository.save(trip);
+  }
+
+  async setSealPhoto(tripId: string, driverId: string, url: string): Promise<Trip> {
+    const trip = await this.tripRepository.findOne({
+      where: { id: tripId },
+      relations: ['requester', 'driver'],
+    });
+
+    if (!trip) {
+      throw new NotFoundException('Viaje no encontrado');
+    }
+
+    if (trip.driverId !== driverId) {
+      throw new ForbiddenException('No eres el conductor de este viaje');
+    }
+
+    if (trip.status !== TripStatus.ACCEPTED) {
+      throw new BadRequestException(
+        'Solo se puede subir la foto del precinto cuando el viaje está aceptado',
+      );
+    }
+
+    trip.sealPhotoUrl = url;
+    const saved = await this.tripRepository.save(trip);
+
+    // Also save as trip document for consistency
+    await this.addTripDocument(tripId, DocumentType.PRECINTO, url, 'precinto.jpg');
+
+    return saved;
   }
 
   async addTripDocument(tripId: string, type: string, url: string, filename: string): Promise<TripDocument> {
@@ -1797,5 +1856,128 @@ export class TripsService {
 
   private toRad(deg: number): number {
     return deg * (Math.PI / 180);
+  }
+
+  // ---- Incidents ----
+
+  async createIncident(
+    tripId: string,
+    userId: string,
+    type: IncidentType,
+    description: string,
+  ): Promise<TripIncident> {
+    const trip = await this.tripRepository.findOne({ where: { id: tripId } });
+    if (!trip) {
+      throw new NotFoundException('Viaje no encontrado');
+    }
+
+    if (trip.driverId !== userId) {
+      throw new ForbiddenException('Solo el conductor puede reportar incidentes');
+    }
+
+    if (trip.status !== TripStatus.ACCEPTED && trip.status !== TripStatus.IN_TRANSIT) {
+      throw new BadRequestException(
+        'Solo se pueden reportar incidentes en viajes aceptados o en tránsito',
+      );
+    }
+
+    const incident = this.tripIncidentRepository.create({
+      tripId,
+      reportedById: userId,
+      type,
+      description,
+    });
+
+    return this.tripIncidentRepository.save(incident);
+  }
+
+  async getIncidents(tripId: string): Promise<TripIncident[]> {
+    return this.tripIncidentRepository.find({
+      where: { tripId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async uploadIncidentPhoto(
+    incidentId: string,
+    userId: string,
+    photoUrl: string,
+  ): Promise<TripIncident> {
+    const incident = await this.tripIncidentRepository.findOne({
+      where: { id: incidentId },
+    });
+
+    if (!incident) {
+      throw new NotFoundException('Incidente no encontrado');
+    }
+
+    if (incident.reportedById !== userId) {
+      throw new ForbiddenException('Solo quien reportó el incidente puede subir fotos');
+    }
+
+    incident.photos = [...incident.photos, photoUrl];
+    return this.tripIncidentRepository.save(incident);
+  }
+
+  async getAllIncidents(filters: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    type?: string;
+  }) {
+    const page = filters.page || 1;
+    const limit = filters.limit || 15;
+    const skip = (page - 1) * limit;
+
+    const qb = this.tripIncidentRepository
+      .createQueryBuilder('incident')
+      .leftJoinAndSelect('incident.trip', 'trip')
+      .leftJoinAndSelect('incident.reportedBy', 'reportedBy');
+
+    if (filters.status) {
+      qb.andWhere('incident.status = :status', { status: filters.status });
+    }
+
+    if (filters.type) {
+      qb.andWhere('incident.type = :type', { type: filters.type });
+    }
+
+    qb.orderBy('incident.createdAt', 'DESC');
+    qb.skip(skip).take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async resolveIncident(incidentId: string, adminNotes?: string): Promise<TripIncident> {
+    const incident = await this.tripIncidentRepository.findOne({
+      where: { id: incidentId },
+    });
+
+    if (!incident) {
+      throw new NotFoundException('Incidente no encontrado');
+    }
+
+    incident.status = IncidentStatus.RESOLVED;
+    incident.adminNotes = adminNotes || null;
+    incident.resolvedAt = new Date();
+
+    const saved = await this.tripIncidentRepository.save(incident);
+
+    // Notify the driver
+    this.pushNotificationService.sendToUser(incident.reportedById, {
+      title: 'Incidente resuelto',
+      body: 'Tu reporte de incidente fue revisado y resuelto por el administrador',
+      data: { incidentId, type: 'incident:resolved' },
+    });
+
+    return saved;
   }
 }
