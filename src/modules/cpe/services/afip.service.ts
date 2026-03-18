@@ -58,7 +58,11 @@ export class AfipService implements OnModuleInit {
   }
 
   isConfigured(): boolean {
-    return !!this.wscpe;
+    return !!this.wscpe || this.isDemoMode();
+  }
+
+  isDemoMode(): boolean {
+    return this.configService.get<string>('AFIP_ENVIRONMENT') === 'demo';
   }
 
   getCuit(): number {
@@ -97,6 +101,15 @@ export class AfipService implements OnModuleInit {
   async autorizarCpeAutomotor(data: Record<string, any>): Promise<any> {
     this.ensureConfigured();
 
+    if (this.isDemoMode()) {
+      this.logger.log('[DEMO] Simulando autorización CPE Automotor');
+      const nroCTG = Math.floor(100000000 + Math.random() * 900000000);
+      return {
+        cabecera: { nroCTG, estado: 'A' },
+        arrayErrores: null,
+      };
+    }
+
     return this.withRetry(async () => {
       this.logger.log('Autorizando CPE Automotor...');
 
@@ -128,6 +141,11 @@ export class AfipService implements OnModuleInit {
     cuitSolicitante: number;
   }): Promise<any> {
     this.ensureConfigured();
+
+    if (this.isDemoMode()) {
+      this.logger.log(`[DEMO] Simulando anulación CPE ${data.cartaPorte}`);
+      return { resultado: 'OK' };
+    }
 
     return this.withRetry(async () => {
       this.logger.log(`Anulando CPE ${data.cartaPorte}...`);
@@ -176,6 +194,11 @@ export class AfipService implements OnModuleInit {
 
   async consultarUltimoNroOrden(cuitSolicitante: number, sucursal: number): Promise<number> {
     this.ensureConfigured();
+
+    if (this.isDemoMode()) {
+      this.logger.log(`[DEMO] Consultando último nro orden para CUIT ${cuitSolicitante}`);
+      return Math.floor(Math.random() * 10000);
+    }
 
     return this.withRetry(async () => {
       this.logger.log(`Consultando último nro orden para CUIT ${cuitSolicitante}, sucursal ${sucursal}...`);
