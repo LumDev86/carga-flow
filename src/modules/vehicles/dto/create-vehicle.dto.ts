@@ -66,4 +66,10 @@ export class CreateVehicleDto {
   @IsOptional()
   @IsEnum(EquipmentType)
   equipmentType?: EquipmentType;
+
+  @ApiPropertyOptional({ example: 'XY 456 ZW', description: 'Patente del acoplado/semi-remolque' })
+  @IsOptional()
+  @IsString()
+  @Length(2, 20)
+  trailerPlate?: string;
 }

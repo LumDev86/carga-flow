@@ -1,12 +1,14 @@
-import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
+import { v4 as uuidv4 } from 'uuid';
 import { TariffRate } from './entities/tariff-rate.entity';
 import { GrainTariffRate } from './entities/grain-tariff-rate.entity';
 import { TransportType } from '../../shared/enums/transport-type.enum';
 import { GrainTariffEntryDto } from './dto/grain-tariff.dto';
+import { FetraPdfParserService } from './fetra-pdf-parser.service';
 
 const TARIFF_CACHE_KEY = 'tariffs:active';
 const GRAIN_TARIFF_CACHE_KEY = 'tariffs:grain';
@@ -22,6 +24,8 @@ export class TariffService {
     @InjectRepository(GrainTariffRate)
     private readonly grainTariffRepository: Repository<GrainTariffRate>,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private readonly fetraPdfParser: FetraPdfParserService,
+    private readonly dataSource: DataSource,
   ) {}
 
   // ==========================================
@@ -178,20 +182,21 @@ export class TariffService {
 
   /**
    * Reemplaza toda la tabla de tarifas cerealeras.
+   * Usa transacción para que si falla el insert no se pierda la tabla.
    */
   async replaceAllGrainTariffs(entries: GrainTariffEntryDto[]): Promise<{ count: number }> {
     this.logger.log(`Reemplazando todas las tarifas cerealeras con ${entries.length} entradas...`);
 
-    await this.grainTariffRepository.clear();
+    await this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(GrainTariffRate);
+      await repo.clear();
 
-    const entities = entries.map((e) =>
-      this.grainTariffRepository.create({
-        km: e.km,
-        pricePerTon: e.pricePerTon,
-      }),
-    );
+      const entities = entries.map((e) =>
+        repo.create({ km: e.km, pricePerTon: e.pricePerTon }),
+      );
 
-    await this.grainTariffRepository.save(entities, { chunk: 200 });
+      await repo.save(entities, { chunk: 200 });
+    });
 
     await this.cacheManager.del(GRAIN_TARIFF_CACHE_KEY);
 
@@ -201,5 +206,60 @@ export class TariffService {
 
   async getGrainTariffCount(): Promise<number> {
     return this.grainTariffRepository.count();
+  }
+
+  // ==========================================
+  // Import PDF Fe.Tr.A
+  // ==========================================
+
+  async parseAndStageGrainPdf(
+    file: Express.Multer.File,
+  ): Promise<{ importId: string; entries: { km: number; pricePerTon: number }[]; metadata: any }> {
+    const result = await this.fetraPdfParser.parsePdf(file.buffer);
+
+    const importId = uuidv4();
+    const cacheKey = `tariff-import:${importId}`;
+
+    await this.cacheManager.set(
+      cacheKey,
+      {
+        entries: result.entries,
+        metadata: result.metadata,
+        originalFilename: file.originalname,
+        uploadedAt: new Date().toISOString(),
+      },
+      1800, // 30 minutes TTL
+    );
+
+    this.logger.log(`PDF Fe.Tr.A parseado y staged: importId=${importId}, ${result.entries.length} entradas`);
+
+    return {
+      importId,
+      entries: result.entries,
+      metadata: result.metadata,
+    };
+  }
+
+  async confirmGrainPdfImport(importId: string): Promise<{ count: number }> {
+    const cacheKey = `tariff-import:${importId}`;
+    const staged = await this.cacheManager.get<{
+      entries: { km: number; pricePerTon: number }[];
+      metadata: any;
+    }>(cacheKey);
+
+    if (!staged) {
+      throw new BadRequestException(
+        'Importación no encontrada o expirada. Suba el PDF nuevamente.',
+      );
+    }
+
+    const result = await this.replaceAllGrainTariffs(staged.entries);
+
+    // Remove staged data
+    await this.cacheManager.del(cacheKey);
+
+    this.logger.log(`Importación PDF Fe.Tr.A confirmada: ${result.count} tarifas reemplazadas`);
+
+    return result;
   }
 }

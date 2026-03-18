@@ -11,3 +11,5 @@ services:
       - .env
     environment:
       - NODE_ENV=development
+    volumes:
+      - ./certs:/opt/carga-flow/certs:ro

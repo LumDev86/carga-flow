@@ -7,3 +7,5 @@ export * from './cargo-type.enum';
 export * from './equipment-type.enum';
 export * from './vehicle-status.enum';
 export * from './payment-method.enum';
+export * from './cpe-status.enum';
+export * from './cpe-type.enum';

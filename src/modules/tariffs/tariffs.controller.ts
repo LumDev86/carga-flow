@@ -7,8 +7,12 @@ import {
   Body,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { TariffService } from './tariffs.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -92,5 +96,31 @@ export class TariffController {
   @ApiOperation({ summary: 'Reemplazar toda la tabla de tarifas cerealeras (admin)' })
   replaceAllGrainTariffs(@Body() dto: BulkGrainTariffDto) {
     return this.tariffService.replaceAllGrainTariffs(dto.entries);
+  }
+
+  @Post('grain/import-pdf')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Parsear PDF de tarifas Fe.Tr.A (preview, no guarda)' })
+  async importGrainPdf(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('Debe subir un archivo PDF');
+    }
+    if (file.mimetype !== 'application/pdf') {
+      throw new BadRequestException('El archivo debe ser un PDF');
+    }
+    return this.tariffService.parseAndStageGrainPdf(file);
+  }
+
+  @Post('grain/import-pdf/confirm/:importId')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Confirmar importación de tarifas Fe.Tr.A desde PDF' })
+  async confirmGrainPdfImport(@Param('importId') importId: string) {
+    return this.tariffService.confirmGrainPdfImport(importId);
   }
 }

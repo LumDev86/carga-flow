@@ -84,6 +84,9 @@ export class Vehicle {
   })
   equipmentType: EquipmentType | null;
 
+  @Column({ type: 'varchar', length: 20, nullable: true, name: 'trailer_plate' })
+  trailerPlate: string | null;
+
   @Column({
     type: 'enum',
     enum: VehicleStatus,

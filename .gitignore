@@ -40,6 +40,9 @@ lerna-debug.log*
 .env.*.local
 .claude/
 
+# AFIP certificates
+/certs/
+
 # Temp files
 *.swp
 *.swo
