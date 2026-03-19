@@ -23,6 +23,7 @@ import { RateTripDto } from './dto/rate-trip.dto';
 import { DriverRateTripDto } from './dto/driver-rate-trip.dto';
 import { TripFiltersDto } from './dto/trip-filters.dto';
 import { UpdateDriverLocationDto } from './dto/update-location.dto';
+import { StartTripDto } from './dto/start-trip.dto';
 import { CreateIncidentDto } from './dto/create-incident.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -171,8 +172,15 @@ export class TripsController {
   @Patch(':id/start')
   @Roles(UserRole.CHOFER)
   @ApiOperation({ summary: 'Iniciar tránsito (ACCEPTED -> IN_TRANSIT)' })
-  start(@CurrentUser('id') userId: string, @Param('id') id: string) {
-    return this.tripsService.startTrip(id, userId);
+  start(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: StartTripDto,
+  ) {
+    const driverLocation = dto.latitude && dto.longitude
+      ? { latitude: dto.latitude, longitude: dto.longitude }
+      : undefined;
+    return this.tripsService.startTrip(id, userId, driverLocation);
   }
 
   @Patch(':id/complete')

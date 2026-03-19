@@ -816,7 +816,7 @@ export class TripsService {
     }) as Promise<Trip>;
   }
 
-  async startTrip(tripId: string, driverId: string): Promise<Trip> {
+  async startTrip(tripId: string, driverId: string, driverLocation?: { latitude: number; longitude: number }): Promise<Trip> {
     const trip = await this.tripRepository.findOne({
       where: { id: tripId },
       relations: ['requester', 'driver'],
@@ -837,11 +837,25 @@ export class TripsService {
     }
 
     // Geofencing: driver must be within 500m of origin to start
-    const driver = await this.userRepository.findOne({ where: { id: driverId } });
-    if (driver?.latitude && driver?.longitude) {
+    // Use GPS location from request, fallback to DB location
+    let driverLat: number | null = null;
+    let driverLng: number | null = null;
+
+    if (driverLocation?.latitude && driverLocation?.longitude) {
+      driverLat = driverLocation.latitude;
+      driverLng = driverLocation.longitude;
+    } else {
+      const driver = await this.userRepository.findOne({ where: { id: driverId } });
+      if (driver?.latitude && driver?.longitude) {
+        driverLat = Number(driver.latitude);
+        driverLng = Number(driver.longitude);
+      }
+    }
+
+    if (driverLat && driverLng) {
       const distanceToOrigin = this.calculateHaversineDistance(
-        Number(driver.latitude),
-        Number(driver.longitude),
+        driverLat,
+        driverLng,
         Number(trip.originLat),
         Number(trip.originLng),
       );
