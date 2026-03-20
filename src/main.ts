@@ -15,6 +15,7 @@ async function bootstrap() {
   const allowedOrigins = [
     process.env.FRONTEND_URL,
     process.env.WEB_URL || 'http://localhost:3001',
+    process.env.PORT_WEB_URL || 'http://localhost:3002',
   ].filter(Boolean);
 
   app.enableCors({
@@ -62,6 +63,7 @@ async function bootstrap() {
     .addTag('documents', 'Gestión documental')
     .addTag('billing', 'Cobranzas y liquidaciones')
     .addTag('admin', 'Panel administrativo')
+    .addTag('port-portal', 'Portal de entidades portuarias')
     .addBearerAuth(
       {
         type: 'http',

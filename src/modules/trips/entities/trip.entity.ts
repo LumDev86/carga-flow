@@ -8,10 +8,12 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { Port } from '../../ports/entities/port.entity';
 import { TripStatus } from '../../../shared/enums/trip-status.enum';
 import { TransportType } from '../../../shared/enums/transport-type.enum';
 import { CargoType } from '../../../shared/enums/cargo-type.enum';
 import { PaymentMethodEnum } from '../../../shared/enums/payment-method.enum';
+import { ArrivalStatus } from '../../../shared/enums/arrival-status.enum';
 
 @Entity('trips')
 export class Trip {
@@ -221,6 +223,34 @@ export class Trip {
 
   @Column({ name: 'driver_rated_at', type: 'timestamp', nullable: true })
   driverRatedAt: Date | null;
+
+  // --- Estado de arribo ---
+  @Column({ name: 'arrival_status', type: 'varchar', nullable: true })
+  arrivalStatus: ArrivalStatus | null;
+
+  @Column({ name: 'arrival_observations', type: 'text', nullable: true })
+  arrivalObservations: string | null;
+
+  @Column({ name: 'arrival_status_set_at', type: 'timestamp', nullable: true })
+  arrivalStatusSetAt: Date | null;
+
+  @Column({ name: 'arrival_status_set_by_id', type: 'uuid', nullable: true })
+  arrivalStatusSetById: string | null;
+
+  // --- Puerto asociado ---
+  @Column({ name: 'origin_port_id', type: 'uuid', nullable: true })
+  originPortId: string | null;
+
+  @ManyToOne(() => Port, { nullable: true })
+  @JoinColumn({ name: 'origin_port_id' })
+  originPort: Port | null;
+
+  @Column({ name: 'destination_port_id', type: 'uuid', nullable: true })
+  destinationPortId: string | null;
+
+  @ManyToOne(() => Port, { nullable: true })
+  @JoinColumn({ name: 'destination_port_id' })
+  destinationPort: Port | null;
 
   // --- Timestamps ---
   @CreateDateColumn({ name: 'created_at' })

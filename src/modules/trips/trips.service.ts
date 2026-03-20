@@ -40,6 +40,7 @@ import { CargoType } from '../../shared/enums/cargo-type.enum';
 import { DocumentType } from '../../shared/enums/document-type.enum';
 import { EquipmentType } from '../../shared/enums/equipment-type.enum';
 import { VehiclesService } from '../vehicles/vehicles.service';
+import { PortsService } from '../ports/ports.service';
 import * as bcrypt from 'bcrypt';
 
 const ASSIGNMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -72,6 +73,7 @@ export class TripsService {
     private readonly walletService: WalletService,
     private readonly paymentsService: PaymentsService,
     private readonly vehiclesService: VehiclesService,
+    private readonly portsService: PortsService,
     @Optional()
     @Inject('TRIPS_QUEUE')
     tripsQueueFallback: Queue | null,
@@ -289,6 +291,20 @@ export class TripsService {
       paymentMethod: dto.paymentMethod || PaymentMethodEnum.CASH,
       status: TripStatus.PENDING,
     });
+
+    // Auto-detect ports if not provided
+    if (dto.originPortId) {
+      trip.originPortId = dto.originPortId;
+    } else {
+      const originPort = await this.portsService.findNearestPort(dto.originLat, dto.originLng);
+      if (originPort) trip.originPortId = originPort.id;
+    }
+    if (dto.destinationPortId) {
+      trip.destinationPortId = dto.destinationPortId;
+    } else {
+      const destPort = await this.portsService.findNearestPort(dto.destinationLat, dto.destinationLng);
+      if (destPort) trip.destinationPortId = destPort.id;
+    }
 
     this.logger.log(`Trip entity created, requesterId: ${trip.requesterId}, requester.id: ${trip.requester?.id}`);
 
@@ -635,7 +651,7 @@ export class TripsService {
     };
   }
 
-  async getTripById(tripId: string, userId: string): Promise<Trip> {
+  async getTripById(tripId: string, userId: string, userPortId?: string | null): Promise<Trip> {
     const trip = await this.tripRepository.findOne({
       where: { id: tripId },
       relations: ['requester', 'driver'],
@@ -650,7 +666,8 @@ export class TripsService {
       trip.requesterId === userId ||
       trip.driverId === userId ||
       trip.assignedDriverId === userId ||
-      trip.status === TripStatus.BROADCAST;
+      trip.status === TripStatus.BROADCAST ||
+      (userPortId && (trip.originPortId === userPortId || trip.destinationPortId === userPortId));
 
     if (!hasRelation) {
       throw new ForbiddenException('No tienes acceso a este viaje');
@@ -732,6 +749,7 @@ export class TripsService {
     // Notify requester
     this.eventsGateway.emitToUser(fullTrip.requesterId, 'trip:accepted', fullTrip);
     this.eventsGateway.emitTripUpdate(tripId, 'trip:accepted', fullTrip);
+    this.emitToPortsIfLinked(fullTrip, 'trip:accepted');
 
     this.pushNotificationService.sendToUser(fullTrip.requesterId, {
       title: 'Conductor encontrado',
@@ -885,6 +903,7 @@ export class TripsService {
     // Notify requester
     this.eventsGateway.emitToUser(trip.requesterId, 'trip:in_transit', savedTrip);
     this.eventsGateway.emitTripUpdate(tripId, 'trip:in_transit', savedTrip);
+    this.emitToPortsIfLinked(savedTrip, 'trip:in_transit');
 
     this.pushNotificationService.sendToUser(trip.requesterId, {
       title: 'Envío en camino',
@@ -936,6 +955,7 @@ export class TripsService {
     // Notify requester
     this.eventsGateway.emitToUser(trip.requesterId, 'trip:delivered', savedTrip);
     this.eventsGateway.emitTripUpdate(tripId, 'trip:delivered', savedTrip);
+    this.emitToPortsIfLinked(savedTrip, 'trip:delivered');
 
     this.pushNotificationService.sendToUser(trip.requesterId, {
       title: 'Envío entregado',
@@ -1203,6 +1223,7 @@ export class TripsService {
     }
 
     this.eventsGateway.emitTripUpdate(tripId, 'trip:cancelled', savedTrip);
+    this.emitToPortsIfLinked(savedTrip, 'trip:cancelled');
 
     this.logger.log(`Trip ${tripId} cancelled by ${isDriver ? 'driver' : 'requester'} ${userId}`);
 
@@ -1299,14 +1320,16 @@ export class TripsService {
     });
   }
 
-  async confirmUnload(tripId: string, userId: string): Promise<Trip> {
+  async confirmUnload(tripId: string, userId: string, userPortId?: string | null): Promise<Trip> {
     const trip = await this.tripRepository.findOne({
       where: { id: tripId },
       relations: ['requester', 'driver'],
     });
 
     if (!trip) throw new NotFoundException('Viaje no encontrado');
-    if (trip.requesterId !== userId) throw new ForbiddenException('Solo el solicitante puede confirmar la descarga');
+    const isRequester = trip.requesterId === userId;
+    const isDestinationPort = userPortId && trip.destinationPortId === userPortId;
+    if (!isRequester && !isDestinationPort) throw new ForbiddenException('Solo el solicitante o el puerto destino puede confirmar la descarga');
     if (trip.status !== TripStatus.DELIVERED) throw new BadRequestException('El viaje debe estar en estado DELIVERED');
     if (trip.unloadConfirmedAt) throw new BadRequestException('La descarga ya fue confirmada');
 
@@ -1319,6 +1342,7 @@ export class TripsService {
       this.eventsGateway.emitToUser(trip.driverId, 'trip:unload_confirmed', savedTrip);
     }
     this.eventsGateway.emitTripUpdate(tripId, 'trip:unload_confirmed', savedTrip);
+    this.emitToPortsIfLinked(savedTrip, 'trip:unload_confirmed');
 
     return savedTrip;
   }
@@ -1870,6 +1894,15 @@ export class TripsService {
 
   private toRad(deg: number): number {
     return deg * (Math.PI / 180);
+  }
+
+  private emitToPortsIfLinked(trip: Trip, event: string): void {
+    if (trip.originPortId) {
+      this.eventsGateway.emitToPort(trip.originPortId, event, trip);
+    }
+    if (trip.destinationPortId) {
+      this.eventsGateway.emitToPort(trip.destinationPortId, event, trip);
+    }
   }
 
   // ---- Incidents ----

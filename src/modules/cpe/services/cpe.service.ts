@@ -15,6 +15,7 @@ import { CpeMappingService } from './cpe-mapping.service';
 import { CpeStatus } from '../../../shared/enums/cpe-status.enum';
 import { CpeType } from '../../../shared/enums/cpe-type.enum';
 import { TripStatus } from '../../../shared/enums/trip-status.enum';
+import { UserRole } from '../../../shared/enums/user-role.enum';
 import { Trip } from '../../trips/entities/trip.entity';
 import { Vehicle } from '../../vehicles/entities/vehicle.entity';
 
@@ -46,6 +47,8 @@ export class CpeService {
       pesoNeto?: number;
       trailerPlate?: string;
     },
+    userRole?: UserRole,
+    userPortId?: string | null,
   ): Promise<CpeRecord> {
     // 1. Load trip with relations
     const trip = await this.tripRepository.findOne({
@@ -70,10 +73,13 @@ export class CpeService {
       throw new BadRequestException('El solicitante no tiene CUIT registrado');
     }
 
-    // 4. Validate caller is the requester (ownership check)
-    if (trip.requesterId !== userId) {
+    // 4. Validate caller is the requester or port associated with the trip
+    const isRequester = trip.requesterId === userId;
+    const isPortUser = userRole === UserRole.PUERTO && userPortId &&
+      (trip.originPortId === userPortId || trip.destinationPortId === userPortId);
+    if (!isRequester && !isPortUser) {
       throw new ForbiddenException(
-        'Solo el solicitante del viaje puede emitir la CPE',
+        'Solo el solicitante del viaje o el puerto asociado puede emitir la CPE',
       );
     }
 
@@ -190,7 +196,7 @@ export class CpeService {
     }
   }
 
-  async voidCpe(cpeRecordId: string, userId: string, reason: string): Promise<CpeRecord> {
+  async voidCpe(cpeRecordId: string, userId: string, reason: string, userRole?: UserRole, userPortId?: string | null): Promise<CpeRecord> {
     const cpeRecord = await this.cpeRecordRepository.findOne({
       where: { id: cpeRecordId },
       relations: ['trip'],
@@ -200,9 +206,12 @@ export class CpeService {
       throw new NotFoundException('Registro CPE no encontrado');
     }
 
-    // Ownership check
-    if (cpeRecord.trip?.requesterId !== userId) {
-      throw new ForbiddenException('Solo el solicitante del viaje puede anular la CPE');
+    // Ownership check: requester or port associated with the trip
+    const isRequester = cpeRecord.trip?.requesterId === userId;
+    const isPortUser = userRole === UserRole.PUERTO && userPortId &&
+      (cpeRecord.trip?.originPortId === userPortId || cpeRecord.trip?.destinationPortId === userPortId);
+    if (!isRequester && !isPortUser) {
+      throw new ForbiddenException('Solo el solicitante del viaje o el puerto asociado puede anular la CPE');
     }
 
     if (cpeRecord.status !== CpeStatus.AUTHORIZED) {

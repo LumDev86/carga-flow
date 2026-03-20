@@ -5,6 +5,8 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
 import { UserRole } from '../../../shared/enums/user-role.enum';
@@ -12,6 +14,7 @@ import { UserStatus } from '../../../shared/enums/user-status.enum';
 import { AccountType } from '../../../shared/enums/account-type.enum';
 import { RefreshToken } from './refresh-token.entity';
 import { Vehicle } from '../../vehicles/entities/vehicle.entity';
+import { Port } from '../../ports/entities/port.entity';
 
 @Entity('users')
 export class User {
@@ -224,6 +227,14 @@ export class User {
 
   @Column({ nullable: true, type: 'varchar', length: 100, name: 'intermediation_representative_role' })
   intermediationRepresentativeRole: string | null;
+
+  // --- Puerto asociado (para usuarios con rol PUERTO) ---
+  @Column({ name: 'port_id', type: 'uuid', nullable: true })
+  portId: string | null;
+
+  @ManyToOne(() => Port, { nullable: true })
+  @JoinColumn({ name: 'port_id' })
+  port: Port | null;
 
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens: RefreshToken[];

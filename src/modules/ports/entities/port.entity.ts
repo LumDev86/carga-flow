@@ -4,7 +4,9 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
+import { User } from '../../users/entities/user.entity';
 
 @Entity('ports')
 export class Port {
@@ -37,6 +39,9 @@ export class Port {
 
   @Column({ length: 500, nullable: true })
   notes: string;
+
+  @OneToMany(() => User, (user) => user.port)
+  users: User[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

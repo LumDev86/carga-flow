@@ -82,6 +82,36 @@ export class PortsService {
     return saved;
   }
 
+  async findNearestPort(lat: number, lng: number, maxDistanceKm = 0.5): Promise<Port | null> {
+    const ports = await this.getActivePorts();
+    let nearest: Port | null = null;
+    let minDistance = maxDistanceKm;
+
+    for (const port of ports) {
+      const distance = this.haversineDistance(
+        lat, lng,
+        Number(port.latitude), Number(port.longitude),
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearest = port;
+      }
+    }
+
+    return nearest;
+  }
+
+  private haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLng = (lng2 - lng1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
   private async invalidateCache(): Promise<void> {
     await this.cacheManager.del(PORTS_CACHE_KEY);
   }

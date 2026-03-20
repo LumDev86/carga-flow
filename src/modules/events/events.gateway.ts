@@ -9,7 +9,10 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
-import { Logger } from '@nestjs/common';
+import { Logger, Inject, forwardRef } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../users/entities/user.entity';
 
 @WebSocketGateway({
   namespace: '/events',
@@ -21,7 +24,11 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(EventsGateway.name);
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ) {}
 
   async handleConnection(client: Socket) {
     try {
@@ -49,6 +56,19 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // If driver, join drivers room
       if (userRole === 'CHOFER') {
         client.join('drivers');
+      }
+
+      // If port user, join port room
+      if (userRole === 'PUERTO') {
+        try {
+          const user = await this.userRepository.findOne({ where: { id: userId } });
+          if (user?.portId) {
+            client.join(`port:${user.portId}`);
+            (client as any).portId = user.portId;
+          }
+        } catch (e) {
+          this.logger.warn(`Failed to lookup port for user ${userId}`);
+        }
       }
 
       this.logger.log(`Client connected: ${userId} (${userRole})`);
@@ -99,5 +119,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   emitTripUpdate(tripId: string, event: string, data: any) {
     this.server.to(`trip:${tripId}`).emit(event, data);
+  }
+
+  emitToPort(portId: string, event: string, data: any) {
+    this.server.to(`port:${portId}`).emit(event, data);
   }
 }

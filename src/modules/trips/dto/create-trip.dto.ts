@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsBoolean, IsEnum, IsDateString, Min } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsBoolean, IsEnum, IsDateString, IsUUID, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TransportType } from '../../../shared/enums/transport-type.enum';
 import { CargoType } from '../../../shared/enums/cargo-type.enum';
@@ -109,4 +109,15 @@ export class CreateTripDto {
   @IsOptional()
   @IsEnum(PaymentMethodEnum)
   paymentMethod?: PaymentMethodEnum;
+
+  // --- Port IDs (auto-detected if not provided) ---
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  originPortId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  destinationPortId?: string;
 }

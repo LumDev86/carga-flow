@@ -151,8 +151,8 @@ export class TripsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Detalle de un viaje' })
-  findOne(@CurrentUser('id') userId: string, @Param('id') id: string) {
-    return this.tripsService.getTripById(id, userId);
+  findOne(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.tripsService.getTripById(id, user.id, user.portId);
   }
 
   @Patch(':id/accept')
@@ -224,8 +224,8 @@ export class TripsController {
   @Patch(':id/confirm-unload')
   @Roles(UserRole.SOLICITANTE, UserRole.PUERTO, UserRole.PRODUCTOR)
   @ApiOperation({ summary: 'Confirmar descarga del camión' })
-  confirmUnload(@CurrentUser('id') userId: string, @Param('id') id: string) {
-    return this.tripsService.confirmUnload(id, userId);
+  confirmUnload(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.tripsService.confirmUnload(id, user.id, user.portId);
   }
 
   @Post(':id/seal-photo')

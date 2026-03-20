@@ -33,7 +33,7 @@ export class CpeController {
 
   @Post('delegation/verify')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SOLICITANTE, UserRole.PRODUCTOR, UserRole.ADMIN)
+  @Roles(UserRole.SOLICITANTE, UserRole.PRODUCTOR, UserRole.PUERTO, UserRole.ADMIN)
   @ApiOperation({ summary: 'Verificar delegación AFIP' })
   verifyDelegation(
     @Body() dto: VerifyDelegationDto,
@@ -44,7 +44,7 @@ export class CpeController {
 
   @Get('delegation/status')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SOLICITANTE, UserRole.PRODUCTOR, UserRole.ADMIN)
+  @Roles(UserRole.SOLICITANTE, UserRole.PRODUCTOR, UserRole.PUERTO, UserRole.ADMIN)
   @ApiOperation({ summary: 'Estado de delegación del usuario' })
   getDelegationStatus(@CurrentUser('id') userId: string) {
     return this.delegationService.getDelegationForUser(userId);
@@ -64,19 +64,19 @@ export class CpeController {
 
   @Post('trips/:tripId/authorize')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SOLICITANTE, UserRole.PRODUCTOR, UserRole.ADMIN)
+  @Roles(UserRole.SOLICITANTE, UserRole.PRODUCTOR, UserRole.PUERTO, UserRole.ADMIN)
   @ApiOperation({ summary: 'Emitir CPE para un viaje' })
   authorizeCpe(
     @Param('tripId', ParseUUIDPipe) tripId: string,
     @Body() dto: AuthorizeCpeDto,
-    @CurrentUser('id') userId: string,
+    @CurrentUser() user: any,
   ) {
-    return this.cpeService.createAndAuthorizeCpe(tripId, userId, dto);
+    return this.cpeService.createAndAuthorizeCpe(tripId, user.id, dto, user.rol, user.portId);
   }
 
   @Get('trips/:tripId')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SOLICITANTE, UserRole.PRODUCTOR, UserRole.CHOFER, UserRole.ADMIN)
+  @Roles(UserRole.SOLICITANTE, UserRole.PRODUCTOR, UserRole.CHOFER, UserRole.PUERTO, UserRole.ADMIN)
   @ApiOperation({ summary: 'Obtener CPE de un viaje' })
   getCpeForTrip(@Param('tripId', ParseUUIDPipe) tripId: string) {
     return this.cpeService.getCpeByTrip(tripId);
@@ -86,19 +86,19 @@ export class CpeController {
 
   @Post(':id/void')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SOLICITANTE, UserRole.PRODUCTOR, UserRole.ADMIN)
+  @Roles(UserRole.SOLICITANTE, UserRole.PRODUCTOR, UserRole.PUERTO, UserRole.ADMIN)
   @ApiOperation({ summary: 'Anular CPE' })
   voidCpe(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: VoidCpeDto,
-    @CurrentUser('id') userId: string,
+    @CurrentUser() user: any,
   ) {
-    return this.cpeService.voidCpe(id, userId, dto.reason);
+    return this.cpeService.voidCpe(id, user.id, dto.reason, user.rol, user.portId);
   }
 
   @Get(':id/history')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SOLICITANTE, UserRole.PRODUCTOR, UserRole.ADMIN)
+  @Roles(UserRole.SOLICITANTE, UserRole.PRODUCTOR, UserRole.PUERTO, UserRole.ADMIN)
   @ApiOperation({ summary: 'Historial de auditoría de CPE' })
   getCpeHistory(@Param('id', ParseUUIDPipe) id: string) {
     return this.cpeService.getCpeHistory(id);
