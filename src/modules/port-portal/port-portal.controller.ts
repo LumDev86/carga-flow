@@ -169,6 +169,28 @@ export class PortPortalController {
     return this.portPortalService.getTripIncidents(portId, tripId);
   }
 
+  // --- Observaciones de Calidad ---
+
+  @Post('trips/:id/quality')
+  @ApiOperation({ summary: 'Registrar observaciones de calidad del viaje' })
+  createQualityObservations(
+    @CurrentUser('id') userId: string,
+    @CurrentUser('portId') portId: string,
+    @Param('id', ParseUUIDPipe) tripId: string,
+    @Body() body: { observations: any[] },
+  ) {
+    return this.tripsService.createQualityObservations(tripId, userId, body.observations);
+  }
+
+  @Get('trips/:id/quality')
+  @ApiOperation({ summary: 'Ver observaciones de calidad del viaje' })
+  getQualityObservations(
+    @CurrentUser('portId') portId: string,
+    @Param('id', ParseUUIDPipe) tripId: string,
+  ) {
+    return this.tripsService.getQualityObservations(tripId);
+  }
+
   // --- Flete Pendiente ---
 
   @Get('pending-flete')
