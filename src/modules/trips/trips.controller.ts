@@ -25,6 +25,8 @@ import { TripFiltersDto } from './dto/trip-filters.dto';
 import { UpdateDriverLocationDto } from './dto/update-location.dto';
 import { StartTripDto } from './dto/start-trip.dto';
 import { CreateIncidentDto } from './dto/create-incident.dto';
+import { CreateQualityObservationsDto } from './dto/create-quality-observation.dto';
+import { SensitiveDataInterceptor } from '../../common/interceptors/sensitive-data.interceptor';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -34,6 +36,7 @@ import { UserRole } from '../../shared/enums/user-role.enum';
 @ApiTags('Trips')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(RolesGuard)
+@UseInterceptors(SensitiveDataInterceptor)
 @Controller('trips')
 export class TripsController {
   constructor(
@@ -147,6 +150,33 @@ export class TripsController {
     @Body() dto: UpdateTripDto,
   ) {
     return this.tripsService.updateTrip(id, userId, dto);
+  }
+
+  // ==========================================
+  // INCIDENTES - Endpoints estáticos (ANTES de :id)
+  // ==========================================
+
+  @Get('incidents/nearby')
+  @Roles(UserRole.CHOFER)
+  @ApiOperation({ summary: 'Ver incidentes cercanos a una ubicación' })
+  getNearbyIncidents(
+    @Query('lat') lat: string,
+    @Query('lng') lng: string,
+    @Query('radius') radius?: string,
+  ) {
+    const latNum = parseFloat(lat);
+    const lngNum = parseFloat(lng);
+    if (isNaN(latNum) || isNaN(lngNum)) {
+      throw new BadRequestException('lat y lng son requeridos y deben ser números válidos');
+    }
+    return this.tripsService.getNearbyIncidents(latNum, lngNum, radius ? parseFloat(radius) : 50);
+  }
+
+  @Get('incidents/map')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Mapa de incidentes activos (últimas 24hs) - Admin' })
+  getActiveIncidentsMap() {
+    return this.tripsService.getActiveIncidentsMap();
   }
 
   @Get(':id')
@@ -301,7 +331,7 @@ export class TripsController {
     @Param('id') id: string,
     @Body() dto: CreateIncidentDto,
   ) {
-    return this.tripsService.createIncident(id, userId, dto.type, dto.description);
+    return this.tripsService.createIncident(id, userId, dto.type, dto.description, dto.severity, dto.latitude, dto.longitude);
   }
 
   @Get(':id/incidents')
@@ -336,5 +366,39 @@ export class TripsController {
     @Body() dto: UpdateDriverLocationDto,
   ) {
     return this.tripsService.updateDriverLocation(id, userId, dto);
+  }
+
+  // ==========================================
+  // OBSERVACIONES DE CALIDAD
+  // ==========================================
+
+  @Post(':id/quality')
+  @Roles(UserRole.PUERTO, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Registrar observaciones de calidad - Puerto/Admin' })
+  createQualityObservations(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: CreateQualityObservationsDto,
+  ) {
+    return this.tripsService.createQualityObservations(id, userId, dto.observations);
+  }
+
+  @Get(':id/quality')
+  @Roles(UserRole.PUERTO, UserRole.ADMIN, UserRole.SOLICITANTE)
+  @ApiOperation({ summary: 'Ver observaciones de calidad de un viaje' })
+  getQualityObservations(@Param('id') id: string) {
+    return this.tripsService.getQualityObservations(id);
+  }
+
+  @Patch(':id/quality/:observationId')
+  @Roles(UserRole.PUERTO, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Actualizar observación de calidad - Puerto/Admin' })
+  updateQualityObservation(
+    @CurrentUser('id') userId: string,
+    @Param('id') _id: string,
+    @Param('observationId') observationId: string,
+    @Body() data: { observedValue?: string; discountKg?: number; requiresReconditioning?: boolean; toChamber?: boolean; notes?: string },
+  ) {
+    return this.tripsService.updateQualityObservation(observationId, userId, data);
   }
 }

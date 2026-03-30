@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { Trip } from './trip.entity';
 import { User } from '../../users/entities/user.entity';
-import { IncidentType } from '../../../shared/enums/incident-type.enum';
+import { IncidentType, IncidentSeverity } from '../../../shared/enums/incident-type.enum';
 import { IncidentStatus } from '../../../shared/enums/incident-status.enum';
 
 @Entity('trip_incidents')
@@ -46,6 +46,22 @@ export class TripIncident {
     default: IncidentStatus.REPORTED,
   })
   status: IncidentStatus;
+
+  @Column({
+    type: 'enum',
+    enum: IncidentSeverity,
+    default: IncidentSeverity.MEDIUM,
+  })
+  severity: IncidentSeverity;
+
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  latitude: number | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  longitude: number | null;
+
+  @Column({ name: 'notified_nearby', type: 'boolean', default: false })
+  notifiedNearby: boolean;
 
   @Column({ type: 'jsonb', default: [] })
   photos: string[];

@@ -237,6 +237,16 @@ export class Trip {
   @Column({ name: 'arrival_status_set_by_id', type: 'uuid', nullable: true })
   arrivalStatusSetById: string | null;
 
+  // --- Pricing / Cotización ---
+  @Column({ name: 'quote_id', type: 'uuid', nullable: true })
+  quoteId: string | null;
+
+  @Column({ name: 'grain_type', type: 'varchar', length: 50, nullable: true })
+  grainType: string | null;
+
+  @Column({ name: 'is_port_return', type: 'boolean', default: false })
+  isPortReturn: boolean;
+
   // --- Puerto asociado ---
   @Column({ name: 'origin_port_id', type: 'uuid', nullable: true })
   originPortId: string | null;

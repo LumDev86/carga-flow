@@ -14,8 +14,10 @@ import type { Queue } from 'bull';
 import { Trip } from './entities/trip.entity';
 import { TripDocument } from './entities/trip-document.entity';
 import { TripIncident } from './entities/trip-incident.entity';
-import { IncidentType } from '../../shared/enums/incident-type.enum';
+import { QualityObservation, QualityParameter } from './entities/quality-observation.entity';
+import { IncidentType, IncidentSeverity } from '../../shared/enums/incident-type.enum';
 import { IncidentStatus } from '../../shared/enums/incident-status.enum';
+import { ArrivalStatus } from '../../shared/enums/arrival-status.enum';
 import { User } from '../users/entities/user.entity';
 import { EventsGateway } from '../events/events.gateway';
 import { GeolocationService } from '../geolocation/geolocation.service';
@@ -66,6 +68,8 @@ export class TripsService {
     private readonly tripDocumentRepository: Repository<TripDocument>,
     @InjectRepository(TripIncident)
     private readonly tripIncidentRepository: Repository<TripIncident>,
+    @InjectRepository(QualityObservation)
+    private readonly qualityObservationRepository: Repository<QualityObservation>,
     private readonly eventsGateway: EventsGateway,
     private readonly geolocationService: GeolocationService,
     private readonly pushNotificationService: PushNotificationService,
@@ -1912,6 +1916,9 @@ export class TripsService {
     userId: string,
     type: IncidentType,
     description: string,
+    severity?: IncidentSeverity,
+    latitude?: number,
+    longitude?: number,
   ): Promise<TripIncident> {
     const trip = await this.tripRepository.findOne({ where: { id: tripId } });
     if (!trip) {
@@ -1933,9 +1940,124 @@ export class TripsService {
       reportedById: userId,
       type,
       description,
+      severity: severity ?? IncidentSeverity.MEDIUM,
+      latitude: latitude ?? null,
+      longitude: longitude ?? null,
     });
 
-    return this.tripIncidentRepository.save(incident);
+    const saved = await this.tripIncidentRepository.save(incident);
+
+    // Notificar al dador del viaje
+    this.pushNotificationService.sendToUser(trip.requesterId, {
+      title: 'Incidente en ruta',
+      body: `Incidente reportado: ${type} - ${description.substring(0, 80)}`,
+      data: { tripId, incidentId: saved.id, type: 'incident:reported' },
+    });
+
+    // Notificar a drivers cercanos si hay GPS
+    if (latitude !== undefined && longitude !== undefined) {
+      this.notifyNearbyDrivers(saved.id, tripId, type, latitude, longitude, userId);
+    }
+
+    return saved;
+  }
+
+  /**
+   * Notifica a drivers cercanos sobre un incidente en ruta.
+   */
+  private async notifyNearbyDrivers(
+    incidentId: string,
+    tripId: string,
+    type: IncidentType,
+    lat: number,
+    lng: number,
+    excludeDriverId: string,
+  ): Promise<void> {
+    const NEARBY_RADIUS_KM = 50;
+
+    try {
+      const nearbyDrivers = await this.userRepository
+        .createQueryBuilder('user')
+        .where('user.rol = :role', { role: UserRole.CHOFER })
+        .andWhere('user.is_available = true')
+        .andWhere('user.latitude IS NOT NULL')
+        .andWhere('user.longitude IS NOT NULL')
+        .andWhere('user.id != :excludeId', { excludeId: excludeDriverId })
+        .andWhere(
+          `(6371 * acos(LEAST(1.0, cos(radians(:lat)) * cos(radians(user.latitude)) * cos(radians(user.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(user.latitude))))) <= :radius`,
+          { radius: NEARBY_RADIUS_KM },
+        )
+        .setParameter('lat', lat)
+        .setParameter('lng', lng)
+        .select(['user.id', 'user.pushToken'])
+        .getMany();
+
+      if (nearbyDrivers.length > 0) {
+        const typeLabels: Record<string, string> = {
+          ACCIDENTE: 'Accidente',
+          CORTE_RUTA: 'Corte de ruta',
+          INUNDACION: 'Inundación',
+          TRANSITO_PESADO: 'Tránsito pesado',
+          PROBLEMA_MECANICO: 'Problema mecánico',
+          ROTURA: 'Rotura',
+          DEMORA_PUERTO: 'Demora en puerto',
+          OTRO: 'Incidente',
+        };
+
+        for (const driver of nearbyDrivers) {
+          this.pushNotificationService.sendToUser(driver.id, {
+            title: 'Alerta en zona',
+            body: `${typeLabels[type] || type} reportado en tu zona`,
+            data: { incidentId, type: 'incident:nearby' },
+          });
+        }
+
+        // Marcar incidente como notificado
+        await this.tripIncidentRepository.update(incidentId, { notifiedNearby: true });
+
+        this.logger.log(`Incidente ${incidentId}: ${nearbyDrivers.length} drivers cercanos notificados`);
+      }
+    } catch (error: any) {
+      this.logger.error(`Error notificando drivers cercanos: ${error.message}`);
+    }
+  }
+
+  /**
+   * Buscar incidentes cercanos a una ubicación.
+   */
+  async getNearbyIncidents(
+    lat: number,
+    lng: number,
+    radiusKm: number = 50,
+  ): Promise<TripIncident[]> {
+    return this.tripIncidentRepository
+      .createQueryBuilder('i')
+      .where('i.latitude IS NOT NULL')
+      .andWhere('i.longitude IS NOT NULL')
+      .andWhere('i.status != :resolved', { resolved: IncidentStatus.RESOLVED })
+      .andWhere('i.created_at > :since', { since: new Date(Date.now() - 24 * 60 * 60 * 1000) })
+      .andWhere(
+        `(6371 * acos(LEAST(1.0, cos(radians(:lat)) * cos(radians(i.latitude)) * cos(radians(i.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(i.latitude))))) <= :radius`,
+        { radius: radiusKm },
+      )
+      .setParameter('lat', lat)
+      .setParameter('lng', lng)
+      .orderBy('i.created_at', 'DESC')
+      .getMany();
+  }
+
+  /**
+   * Mapa de incidentes activos (últimas 24hs, no resueltos).
+   */
+  async getActiveIncidentsMap(): Promise<TripIncident[]> {
+    return this.tripIncidentRepository
+      .createQueryBuilder('i')
+      .where('i.latitude IS NOT NULL')
+      .andWhere('i.longitude IS NOT NULL')
+      .andWhere('i.status != :resolved', { resolved: IncidentStatus.RESOLVED })
+      .andWhere('i.created_at > :since', { since: new Date(Date.now() - 24 * 60 * 60 * 1000) })
+      .orderBy('i.created_at', 'DESC')
+      .getMany();
   }
 
   async getIncidents(tripId: string, userId?: string): Promise<TripIncident[]> {
@@ -2043,5 +2165,131 @@ export class TripsService {
     });
 
     return saved;
+  }
+
+  // ==========================================
+  // OBSERVACIONES DE CALIDAD
+  // ==========================================
+
+  /**
+   * Registrar observaciones de calidad para un viaje.
+   * Solo se permite si el arrival_status es DEMORADO o RECHAZADO.
+   */
+  async createQualityObservations(
+    tripId: string,
+    userId: string,
+    observations: Array<{
+      parameter: QualityParameter;
+      observedValue: string;
+      discountKg?: number;
+      requiresReconditioning?: boolean;
+      toChamber?: boolean;
+      notes?: string;
+    }>,
+  ): Promise<QualityObservation[]> {
+    const trip = await this.tripRepository.findOne({ where: { id: tripId } });
+    if (!trip) {
+      throw new NotFoundException('Viaje no encontrado');
+    }
+
+    if (!trip.arrivalStatus) {
+      throw new BadRequestException(
+        'Debe establecer el estado de arribo antes de registrar observaciones de calidad',
+      );
+    }
+
+    if (trip.arrivalStatus === ArrivalStatus.CONFORME) {
+      throw new BadRequestException(
+        'No se pueden registrar observaciones de calidad para viajes con estado CONFORME',
+      );
+    }
+
+    const entities = observations.map((obs) =>
+      this.qualityObservationRepository.create({
+        tripId,
+        parameter: obs.parameter,
+        observedValue: obs.observedValue,
+        discountKg: obs.discountKg ?? null,
+        requiresReconditioning: obs.requiresReconditioning || false,
+        toChamber: obs.toChamber || false,
+        notes: obs.notes || null,
+        reportedById: userId,
+      }),
+    );
+
+    const saved = await this.qualityObservationRepository.save(entities);
+
+    // Notificar al dador
+    const hasReconditioning = observations.some((o) => o.requiresReconditioning);
+    const paramNames = observations.map((o) => o.parameter).join(', ');
+
+    const driver = trip.driverId
+      ? await this.userRepository.findOne({ where: { id: trip.driverId }, select: ['id', 'firstName', 'lastName'] })
+      : null;
+
+    const driverName = driver ? `${driver.firstName} ${driver.lastName}` : 'Sin asignar';
+
+    let message = `Observaciones de calidad: ${paramNames}`;
+    if (hasReconditioning) {
+      message = `Camión (${driverName}) demorado por calidad (${paramNames}). En evaluación/desvío a reacondicionadora.`;
+    }
+
+    this.pushNotificationService.sendToUser(trip.requesterId, {
+      title: trip.arrivalStatus === ArrivalStatus.RECHAZADO ? 'Carga rechazada' : 'Demora por calidad',
+      body: message,
+      data: { tripId, type: 'quality:reported' },
+    });
+
+    this.eventsGateway.emitToUser(trip.requesterId, 'trip:quality_reported', {
+      tripId,
+      arrivalStatus: trip.arrivalStatus,
+      observations: saved,
+      message,
+    });
+
+    this.logger.log(`Quality observations created for trip ${tripId}: ${paramNames}`);
+
+    return saved;
+  }
+
+  /**
+   * Obtener observaciones de calidad de un viaje.
+   */
+  async getQualityObservations(tripId: string): Promise<QualityObservation[]> {
+    return this.qualityObservationRepository.find({
+      where: { tripId },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  /**
+   * Actualizar una observación de calidad.
+   */
+  async updateQualityObservation(
+    observationId: string,
+    userId: string,
+    data: {
+      observedValue?: string;
+      discountKg?: number;
+      requiresReconditioning?: boolean;
+      toChamber?: boolean;
+      notes?: string;
+    },
+  ): Promise<QualityObservation> {
+    const obs = await this.qualityObservationRepository.findOne({
+      where: { id: observationId },
+    });
+
+    if (!obs) {
+      throw new NotFoundException('Observación no encontrada');
+    }
+
+    if (data.observedValue !== undefined) obs.observedValue = data.observedValue;
+    if (data.discountKg !== undefined) obs.discountKg = data.discountKg;
+    if (data.requiresReconditioning !== undefined) obs.requiresReconditioning = data.requiresReconditioning;
+    if (data.toChamber !== undefined) obs.toChamber = data.toChamber;
+    if (data.notes !== undefined) obs.notes = data.notes;
+
+    return this.qualityObservationRepository.save(obs);
   }
 }

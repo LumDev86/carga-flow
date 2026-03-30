@@ -21,6 +21,9 @@ import { PortsModule } from './modules/ports/ports.module';
 import { AuthorizationModule } from './modules/authorization/authorization.module';
 import { CpeModule } from './modules/cpe/cpe.module';
 import { PortPortalModule } from './modules/port-portal/port-portal.module';
+import { PricingModule } from './modules/pricing/pricing.module';
+import { AssignmentModule } from './modules/assignment/assignment.module';
+import { AntiBypassModule } from './modules/anti-bypass/anti-bypass.module';
 
 // Check if Redis is configured
 const isRedisConfigured = () => {
@@ -81,6 +84,9 @@ const conditionalImports = isRedisConfigured()
     AuthorizationModule,
     CpeModule,
     PortPortalModule,
+    PricingModule,
+    AssignmentModule,
+    AntiBypassModule,
   ],
   controllers: [AppController],
   providers: [AppService],
