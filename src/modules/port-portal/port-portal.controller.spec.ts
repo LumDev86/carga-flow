@@ -164,8 +164,8 @@ describe('PortPortalController', () => {
 
   describe('GET /port-portal/cpe/:id/pdf', () => {
     it('should call getCpePdf', async () => {
-      await controller.getCpePdf('cpe-id');
-      expect(service.getCpePdf).toHaveBeenCalledWith('cpe-id');
+      await controller.getCpePdf('port-id', 'cpe-id');
+      expect(service.getCpePdf).toHaveBeenCalledWith('port-id', 'cpe-id');
     });
   });
 

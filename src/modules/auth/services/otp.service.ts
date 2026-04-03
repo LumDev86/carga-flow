@@ -74,6 +74,29 @@ export class OtpService {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
+  async generateAndSendPasswordResetOtp(user: User): Promise<void> {
+    const otp = this.generateOtpCode();
+    const key = `otp:password-reset:${user.id}`;
+
+    await this.cacheManager.set(key, otp, this.OTP_TTL * 1000);
+
+    await this.sendEmailOtp(user.email, otp);
+
+    this.logger.log(`OTP de reset de contraseña generado para ${user.email}: ${otp}`);
+  }
+
+  async verifyPasswordResetOtp(userId: string, code: string): Promise<boolean> {
+    const key = `otp:password-reset:${userId}`;
+    const storedOtp = await this.cacheManager.get<string>(key);
+
+    if (!storedOtp || storedOtp !== code) {
+      return false;
+    }
+
+    await this.cacheManager.del(key);
+    return true;
+  }
+
   private async sendEmailOtp(email: string, otp: string): Promise<void> {
     this.logger.warn(`[PLACEHOLDER] Enviando OTP ${otp} al email ${email}`);
   }

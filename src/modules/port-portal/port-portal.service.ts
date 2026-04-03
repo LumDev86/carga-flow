@@ -20,6 +20,7 @@ import { PortDashboardDto, PortStatsDto } from './dto/port-dashboard.dto';
 import { UpdateArrivalStatusDto } from './dto/update-arrival-status.dto';
 import { TripsService } from '../trips/trips.service';
 import { EventsGateway } from '../events/events.gateway';
+import { NotificationService } from '../notifications/notification.service';
 
 @Injectable()
 export class PortPortalService {
@@ -40,6 +41,7 @@ export class PortPortalService {
     private readonly cpeRecordRepository: Repository<CpeRecord>,
     private readonly tripsService: TripsService,
     private readonly eventsGateway: EventsGateway,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async getMyPort(portId: string): Promise<Port> {
@@ -110,13 +112,13 @@ export class PortPortalService {
           .createQueryBuilder('trip')
           .where('trip.destinationPortId = :portId', { portId })
           .andWhere('trip.arrivalStatus = :demorado', { demorado: ArrivalStatus.DEMORADO })
-          .andWhere('trip.arrivalStatusSetAt >= :startOfDay', { startOfDay })
+          .andWhere('(trip.arrivalStatusSetAt >= :startOfDay OR trip.deliveredAt >= :startOfDay)', { startOfDay })
           .getCount(),
         this.tripRepository
           .createQueryBuilder('trip')
           .where('trip.destinationPortId = :portId', { portId })
           .andWhere('trip.arrivalStatus = :rechazado', { rechazado: ArrivalStatus.RECHAZADO })
-          .andWhere('trip.arrivalStatusSetAt >= :startOfDay', { startOfDay })
+          .andWhere('(trip.arrivalStatusSetAt >= :startOfDay OR trip.deliveredAt >= :startOfDay)', { startOfDay })
           .getCount(),
       ]);
 
@@ -371,9 +373,18 @@ export class PortPortalService {
     });
   }
 
-  async getCpePdf(cpeId: string): Promise<{ pdfUrl: string | null }> {
-    const cpe = await this.cpeRecordRepository.findOne({ where: { id: cpeId } });
+  async getCpePdf(portId: string, cpeId: string): Promise<{ pdfUrl: string | null }> {
+    const cpe = await this.cpeRecordRepository.findOne({
+      where: { id: cpeId },
+      relations: ['trip'],
+    });
     if (!cpe) throw new NotFoundException('CPE no encontrada');
+
+    const trip = cpe.trip;
+    if (!trip || (trip.originPortId !== portId && trip.destinationPortId !== portId)) {
+      throw new ForbiddenException('Esta CPE no pertenece a tu puerto');
+    }
+
     return { pdfUrl: cpe.pdfUrl || null };
   }
 
@@ -433,6 +444,57 @@ export class PortPortalService {
     this.logger.log(
       `Arrival status set to ${dto.arrivalStatus} for trip ${tripId} by user ${userId}`,
     );
+
+    // Crear notificaciones para usuarios del puerto
+    const portUsers = await this.userRepository.find({ where: { portId } });
+    for (const pu of portUsers) {
+      if (pu.id !== userId) {
+        await this.notificationService.create(
+          pu.id,
+          'trip:arrival_status',
+          `Estado de arribo actualizado`,
+          `Viaje marcado como ${dto.arrivalStatus}`,
+          { tripId, arrivalStatus: dto.arrivalStatus },
+        );
+      }
+    }
+
+    return saved;
+  }
+
+  async markFletePaid(portId: string, userId: string, tripId: string): Promise<Trip> {
+    const trip = await this.getTripDetail(portId, tripId);
+
+    if (trip.fleteStatus === 'PAID') {
+      throw new BadRequestException('El flete ya fue marcado como pagado');
+    }
+
+    trip.fleteStatus = 'PAID';
+    trip.fletePaidAt = new Date();
+    trip.fletePaidById = userId;
+
+    const saved = await this.tripRepository.save(trip);
+
+    this.eventsGateway.emitToPort(portId, 'trip:flete_paid', {
+      tripId: saved.id,
+      fletePaidAt: saved.fletePaidAt,
+    });
+
+    this.logger.log(`Flete marked as paid for trip ${tripId} by user ${userId}`);
+
+    // Notificar a usuarios del puerto
+    const portUsers = await this.userRepository.find({ where: { portId } });
+    for (const pu of portUsers) {
+      if (pu.id !== userId) {
+        await this.notificationService.create(
+          pu.id,
+          'trip:flete_paid',
+          'Flete pagado',
+          `Se confirmó el pago del flete del viaje`,
+          { tripId },
+        );
+      }
+    }
 
     return saved;
   }

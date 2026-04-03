@@ -200,6 +200,16 @@ export class Trip {
   @Column({ name: 'driver_credited_at', type: 'timestamp', nullable: true })
   driverCreditedAt: Date | null;
 
+  // --- Flete status (puerto confirma pago) ---
+  @Column({ name: 'flete_status', type: 'varchar', length: 20, nullable: true, default: 'PENDING' })
+  fleteStatus: string | null;
+
+  @Column({ name: 'flete_paid_at', type: 'timestamp', nullable: true })
+  fletePaidAt: Date | null;
+
+  @Column({ name: 'flete_paid_by_id', type: 'uuid', nullable: true })
+  fletePaidById: string | null;
+
   // --- Confirmación de descarga ---
   @Column({ name: 'unload_confirmed_at', type: 'timestamp', nullable: true })
   unloadConfirmedAt: Date | null;

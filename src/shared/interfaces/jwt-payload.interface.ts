@@ -6,6 +6,7 @@ export interface JwtPayload {
   email: string;
   rol: UserRole;
   estado: UserStatus;
+  portId?: string | null;
   iat?: number;
   exp?: number;
 }

@@ -1,12 +1,14 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Param,
   Query,
   Body,
   UseGuards,
   NotFoundException,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ResolveIncidentDto } from '../trips/dto/resolve-incident.dto';
 import {
@@ -22,6 +24,7 @@ import { UserRole } from '../../shared/enums/user-role.enum';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { ConfirmFleteReceivedDto } from '../trips/dto/confirm-flete.dto';
 import { ProcessWithdrawalDto, RejectWithdrawalDto } from '../wallet/dto/process-withdrawal.dto';
+import { CreatePortUserDto } from './dto/create-port-user.dto';
 
 @ApiTags('admin')
 @Controller('admin')
@@ -287,5 +290,41 @@ export class AdminController {
     @Body() dto: RejectWithdrawalDto,
   ) {
     return this.adminService.rejectWithdrawal(id, dto);
+  }
+
+  // ---- Port User Management ----
+
+  @Post('ports/:portId/users')
+  @ApiOperation({ summary: 'Crear usuario de puerto' })
+  @ApiResponse({ status: 201, description: 'Usuario de puerto creado' })
+  async createPortUser(
+    @Param('portId', ParseUUIDPipe) portId: string,
+    @Body() dto: CreatePortUserDto,
+  ) {
+    return this.adminService.createPortUser(portId, dto);
+  }
+
+  @Get('ports/:portId/users')
+  @ApiOperation({ summary: 'Listar usuarios de un puerto' })
+  @ApiResponse({ status: 200, description: 'Lista de usuarios del puerto' })
+  async getPortUsers(@Param('portId', ParseUUIDPipe) portId: string) {
+    return this.adminService.getPortUsers(portId);
+  }
+
+  @Patch('users/:id/port')
+  @ApiOperation({ summary: 'Asignar/cambiar puerto de un usuario' })
+  @ApiResponse({ status: 200, description: 'Puerto asignado' })
+  async assignUserToPort(
+    @Param('id', ParseUUIDPipe) userId: string,
+    @Body() body: { portId: string },
+  ) {
+    return this.adminService.assignUserToPort(userId, body.portId);
+  }
+
+  @Patch('users/:id/deactivate')
+  @ApiOperation({ summary: 'Desactivar usuario' })
+  @ApiResponse({ status: 200, description: 'Usuario desactivado' })
+  async deactivateUser(@Param('id', ParseUUIDPipe) userId: string) {
+    return this.adminService.deactivateUser(userId);
   }
 }

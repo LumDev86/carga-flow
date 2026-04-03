@@ -1,13 +1,16 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 import { Trip } from '../trips/entities/trip.entity';
 import { User } from '../users/entities/user.entity';
 import { Vehicle } from '../vehicles/entities/vehicle.entity';
+import { Port } from '../ports/entities/port.entity';
 import { WalletTransaction } from '../wallet/entities/wallet-transaction.entity';
 import { WithdrawalRequest } from '../wallet/entities/withdrawal-request.entity';
 import { TripStatus } from '../../shared/enums/trip-status.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
+import { UserStatus } from '../../shared/enums/user-status.enum';
 import { VehicleStatus } from '../../shared/enums/vehicle-status.enum';
 import { WithdrawalStatus } from '../../shared/enums/withdrawal-status.enum';
 import { TripsService } from '../trips/trips.service';
@@ -15,6 +18,7 @@ import { WalletService } from '../wallet/wallet.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
 import { ConfirmFleteReceivedDto } from '../trips/dto/confirm-flete.dto';
 import { ProcessWithdrawalDto, RejectWithdrawalDto } from '../wallet/dto/process-withdrawal.dto';
+import { CreatePortUserDto } from './dto/create-port-user.dto';
 
 @Injectable()
 export class AdminService {
@@ -29,6 +33,8 @@ export class AdminService {
     private readonly walletTransactionRepository: Repository<WalletTransaction>,
     @InjectRepository(WithdrawalRequest)
     private readonly withdrawalRepository: Repository<WithdrawalRequest>,
+    @InjectRepository(Port)
+    private readonly portRepository: Repository<Port>,
     private readonly tripsService: TripsService,
     private readonly walletService: WalletService,
     private readonly pushNotificationService: PushNotificationService,
@@ -476,5 +482,54 @@ export class AdminService {
     });
 
     return withdrawal;
+  }
+
+  // ---- Port User Management ----
+
+  async createPortUser(portId: string, dto: CreatePortUserDto): Promise<User> {
+    const port = await this.portRepository.findOne({ where: { id: portId } });
+    if (!port) throw new NotFoundException('Puerto no encontrado');
+
+    const existing = await this.userRepository.findOne({ where: { email: dto.email } });
+    if (existing) throw new BadRequestException('El email ya está registrado');
+
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    const user = this.userRepository.create({
+      email: dto.email,
+      password: hashedPassword,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      phone: dto.phone,
+      rol: UserRole.PUERTO,
+      estado: UserStatus.VERIFIED,
+      emailVerified: true,
+      portId,
+    });
+
+    return this.userRepository.save(user);
+  }
+
+  async getPortUsers(portId: string): Promise<User[]> {
+    return this.userRepository.find({
+      where: { portId, rol: UserRole.PUERTO },
+      select: ['id', 'email', 'firstName', 'lastName', 'phone', 'estado', 'createdAt'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async assignUserToPort(userId: string, portId: string): Promise<User> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+    const port = await this.portRepository.findOne({ where: { id: portId } });
+    if (!port) throw new NotFoundException('Puerto no encontrado');
+    user.portId = portId;
+    return this.userRepository.save(user);
+  }
+
+  async deactivateUser(userId: string): Promise<User> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+    user.estado = UserStatus.BANNED;
+    return this.userRepository.save(user);
   }
 }

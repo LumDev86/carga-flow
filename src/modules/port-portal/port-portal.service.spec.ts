@@ -458,14 +458,19 @@ describe('PortPortalService', () => {
 
   describe('getCpePdf', () => {
     it('should return pdf URL', async () => {
-      cpeRepo.findOne.mockResolvedValue({ id: 'cpe-1', pdfUrl: 'https://example.com/cpe.pdf' } as any);
-      const result = await service.getCpePdf('cpe-1');
+      cpeRepo.findOne.mockResolvedValue({ id: 'cpe-1', pdfUrl: 'https://example.com/cpe.pdf', trip: { originPortId: 'port-1', destinationPortId: 'port-2' } } as any);
+      const result = await service.getCpePdf('port-1', 'cpe-1');
       expect(result.pdfUrl).toBe('https://example.com/cpe.pdf');
     });
 
     it('should throw NotFoundException when CPE not found', async () => {
       cpeRepo.findOne.mockResolvedValue(null);
-      await expect(service.getCpePdf('cpe-1')).rejects.toThrow(NotFoundException);
+      await expect(service.getCpePdf('port-1', 'cpe-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw ForbiddenException when CPE does not belong to port', async () => {
+      cpeRepo.findOne.mockResolvedValue({ id: 'cpe-1', pdfUrl: 'https://example.com/cpe.pdf', trip: { originPortId: 'other-port', destinationPortId: 'other-port-2' } } as any);
+      await expect(service.getCpePdf('port-1', 'cpe-1')).rejects.toThrow(ForbiddenException);
     });
   });
 

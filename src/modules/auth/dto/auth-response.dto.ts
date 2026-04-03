@@ -42,6 +42,9 @@ export class UserResponseDto {
   @ApiProperty({ example: false })
   hasSignedIntermediationAuth: boolean;
 
+  @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174000', nullable: true, description: 'ID del puerto asociado (solo para usuarios PUERTO)' })
+  portId: string | null;
+
   @ApiProperty({ example: '2025-12-22T14:30:00.000Z' })
   createdAt: Date;
 

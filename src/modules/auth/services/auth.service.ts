@@ -182,6 +182,30 @@ export class AuthService {
     });
   }
 
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    const user = await this.usersService.findByEmail(email);
+    // Siempre retornar éxito para prevenir enumeración de emails
+    if (user) {
+      await this.otpService.generateAndSendPasswordResetOtp(user);
+    }
+    return { message: 'Si el email existe, recibirás un código para restablecer tu contraseña.' };
+  }
+
+  async resetPassword(email: string, code: string, newPassword: string): Promise<{ message: string }> {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      throw new BadRequestException('Código inválido o expirado');
+    }
+    const isValid = await this.otpService.verifyPasswordResetOtp(user.id, code);
+    if (!isValid) {
+      throw new BadRequestException('Código inválido o expirado');
+    }
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await this.usersService.update(user.id, { password: hashedPassword } as any);
+    await this.revokeAllTokens(user.id);
+    return { message: 'Contraseña restablecida exitosamente. Por favor inicia sesión.' };
+  }
+
   async updateProfile(userId: string, updateUserDto: UpdateUserDto): Promise<User> {
     return await this.usersService.update(userId, updateUserDto);
   }
@@ -200,6 +224,7 @@ export class AuthService {
       email: user.email,
       rol: user.rol,
       estado: user.estado,
+      portId: user.portId || null,
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -234,6 +259,7 @@ export class AuthService {
       avatarUrl: user.avatarUrl || null,
       hasAcceptedDeclaration: user.hasAcceptedDeclaration,
       hasSignedIntermediationAuth: user.hasSignedIntermediationAuth,
+      portId: user.portId || null,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

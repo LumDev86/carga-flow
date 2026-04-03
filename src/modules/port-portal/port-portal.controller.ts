@@ -23,6 +23,7 @@ import { PortTripFiltersDto } from './dto/port-trip-filters.dto';
 import { UpdateArrivalStatusDto } from './dto/update-arrival-status.dto';
 import { StorageService } from '../../common/storage/storage.service';
 import { TripsService } from '../trips/trips.service';
+import { NotificationService } from '../notifications/notification.service';
 
 @ApiTags('port-portal')
 @ApiBearerAuth('JWT-auth')
@@ -34,6 +35,7 @@ export class PortPortalController {
     private readonly portPortalService: PortPortalService,
     private readonly storageService: StorageService,
     private readonly tripsService: TripsService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // --- Perfil del Puerto ---
@@ -61,6 +63,33 @@ export class PortPortalController {
     return this.portPortalService.getDashboard(portId);
   }
 
+  // --- Notificaciones ---
+
+  @Patch('notifications/read-all')
+  @ApiOperation({ summary: 'Marcar todas las notificaciones como leídas' })
+  markAllNotificationsRead(@CurrentUser('id') userId: string) {
+    return this.notificationService.markAllAsRead(userId);
+  }
+
+  @Get('notifications')
+  @ApiOperation({ summary: 'Listar notificaciones del usuario (paginado)' })
+  getNotifications(
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.notificationService.findByUser(userId, page || 1, limit || 20);
+  }
+
+  @Patch('notifications/:id/read')
+  @ApiOperation({ summary: 'Marcar notificación como leída' })
+  markNotificationRead(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.notificationService.markAsRead(id, userId);
+  }
+
   // --- Gestión de Viajes ---
 
   @Get('trips')
@@ -73,6 +102,15 @@ export class PortPortalController {
   @ApiOperation({ summary: 'Viajes de hoy: arrivals y departures' })
   getTodayTrips(@CurrentUser('portId') portId: string) {
     return this.portPortalService.getTodayTrips(portId);
+  }
+
+  @Get('trips/export')
+  @ApiOperation({ summary: 'Exportar viajes (hasta 5000, formato JSON)' })
+  exportTrips(
+    @CurrentUser('portId') portId: string,
+    @Query() filters: PortTripFiltersDto,
+  ) {
+    return this.portPortalService.getPortTrips(portId, { ...filters, limit: 5000 } as any);
   }
 
   @Get('trips/:id')
@@ -154,8 +192,11 @@ export class PortPortalController {
 
   @Get('cpe/:id/pdf')
   @ApiOperation({ summary: 'Obtener URL del PDF de CPE' })
-  getCpePdf(@Param('id', ParseUUIDPipe) cpeId: string) {
-    return this.portPortalService.getCpePdf(cpeId);
+  getCpePdf(
+    @CurrentUser('portId') portId: string,
+    @Param('id', ParseUUIDPipe) cpeId: string,
+  ) {
+    return this.portPortalService.getCpePdf(portId, cpeId);
   }
 
   // --- Incidentes ---
@@ -197,6 +238,15 @@ export class PortPortalController {
   @ApiOperation({ summary: 'Viajes con flete pendiente de cobro' })
   getPendingFlete(@CurrentUser('portId') portId: string) {
     return this.portPortalService.getPendingFlete(portId);
+  }
+
+  @Patch('trips/:id/mark-flete-paid')
+  @ApiOperation({ summary: 'Marcar flete como pagado (puerto confirma pago)' })
+  markFletePaid(
+    @CurrentUser() user: any,
+    @Param('id', ParseUUIDPipe) tripId: string,
+  ) {
+    return this.portPortalService.markFletePaid(user.portId, user.id, tripId);
   }
 
   // --- Estadísticas ---
