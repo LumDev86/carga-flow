@@ -499,25 +499,48 @@ export class PortPortalService {
     return saved;
   }
 
-  async getPendingFlete(portId: string): Promise<Trip[]> {
-    return this.tripRepository
+  async getPendingFlete(portId: string, fleteFilter?: string): Promise<Trip[]> {
+    const qb = this.tripRepository
       .createQueryBuilder('trip')
       .leftJoinAndSelect('trip.requester', 'requester')
       .leftJoinAndSelect('trip.driver', 'driver')
       .where(
-        new Brackets((qb) => {
-          qb.where('trip.originPortId = :portId', { portId })
+        new Brackets((qb2) => {
+          qb2.where('trip.originPortId = :portId', { portId })
             .orWhere('trip.destinationPortId = :portId', { portId });
         }),
       )
-      .andWhere('trip.status = :status', { status: TripStatus.DELIVERED })
-      .andWhere("(trip.paymentStatus = 'pending_flete' OR trip.paymentStatus = 'pending')")
-      .orderBy('trip.deliveredAt', 'ASC')
-      .getMany();
+      .andWhere('trip.status = :status', { status: TripStatus.DELIVERED });
+
+    if (fleteFilter === 'PAID') {
+      qb.andWhere("trip.fleteStatus = 'PAID'");
+    } else if (fleteFilter === 'ALL') {
+      // No filter on fleteStatus — show all delivered
+    } else {
+      // Default: only pending
+      qb.andWhere("(trip.fleteStatus IS NULL OR trip.fleteStatus = 'PENDING')")
+        .andWhere("(trip.paymentStatus = 'pending_flete' OR trip.paymentStatus = 'pending')");
+    }
+
+    return qb.orderBy('trip.deliveredAt', 'ASC').getMany();
   }
 
-  async getPortStats(portId: string): Promise<PortStatsDto> {
-    // Trips by month (last 12 months)
+  private getPeriodDate(period?: string): Date {
+    const now = new Date();
+    switch (period) {
+      case '30d': return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      case '90d': return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      case '6m': return new Date(now.setMonth(now.getMonth() - 6));
+      case 'ytd': return new Date(new Date().getFullYear(), 0, 1);
+      case '12m':
+      default: return new Date(new Date().getTime() - 365 * 24 * 60 * 60 * 1000);
+    }
+  }
+
+  async getPortStats(portId: string, period?: string): Promise<PortStatsDto> {
+    const periodDate = this.getPeriodDate(period);
+
+    // Trips by month
     const tripsByMonth = await this.tripRepository
       .createQueryBuilder('trip')
       .select("TO_CHAR(trip.createdAt, 'YYYY-MM')", 'month')
@@ -530,7 +553,7 @@ export class PortPortalService {
           );
         }),
       )
-      .andWhere("trip.createdAt >= NOW() - INTERVAL '12 months'")
+      .andWhere('trip.createdAt >= :periodDate', { periodDate })
       .groupBy("TO_CHAR(trip.createdAt, 'YYYY-MM')")
       .orderBy('month', 'ASC')
       .getRawMany();
@@ -567,6 +590,7 @@ export class PortPortalService {
       )
       .andWhere('trip.driverId IS NOT NULL')
       .andWhere('trip.status = :delivered', { delivered: TripStatus.DELIVERED })
+      .andWhere('trip.createdAt >= :periodDate', { periodDate })
       .groupBy('trip.driverId')
       .addGroupBy('driver.firstName')
       .addGroupBy('driver.lastName')
@@ -587,6 +611,7 @@ export class PortPortalService {
           );
         }),
       )
+      .andWhere('trip.createdAt >= :periodDate', { periodDate })
       .groupBy('trip.cargoType')
       .getRawMany();
 
@@ -608,6 +633,7 @@ export class PortPortalService {
       .andWhere('trip.status = :delivered', { delivered: TripStatus.DELIVERED })
       .andWhere('trip.deliveredAt IS NOT NULL')
       .andWhere('trip.pickedUpAt IS NOT NULL')
+      .andWhere('trip.createdAt >= :periodDate', { periodDate })
       .getRawOne();
 
     return {

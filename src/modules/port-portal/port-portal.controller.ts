@@ -236,8 +236,11 @@ export class PortPortalController {
 
   @Get('pending-flete')
   @ApiOperation({ summary: 'Viajes con flete pendiente de cobro' })
-  getPendingFlete(@CurrentUser('portId') portId: string) {
-    return this.portPortalService.getPendingFlete(portId);
+  getPendingFlete(
+    @CurrentUser('portId') portId: string,
+    @Query('fleteStatus') fleteStatus?: string,
+  ) {
+    return this.portPortalService.getPendingFlete(portId, fleteStatus);
   }
 
   @Patch('trips/:id/mark-flete-paid')
@@ -253,7 +256,10 @@ export class PortPortalController {
 
   @Get('stats')
   @ApiOperation({ summary: 'Estadísticas del puerto' })
-  getStats(@CurrentUser('portId') portId: string) {
-    return this.portPortalService.getPortStats(portId);
+  getStats(
+    @CurrentUser('portId') portId: string,
+    @Query('period') period?: string,
+  ) {
+    return this.portPortalService.getPortStats(portId, period);
   }
 }
