@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Delete,
   Body,
   HttpCode,
   HttpStatus,
@@ -185,6 +186,32 @@ export class AuthController {
     @Body() body: { isAvailable: boolean },
   ) {
     return await this.authService.updateAvailability(userId, body.isAvailable);
+  }
+
+  @Public()
+  @Post('request-account-deletion')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Solicitar eliminación de cuenta vía web (sin auth)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Solicitud de eliminación recibida',
+  })
+  async requestAccountDeletion(
+    @Body() body: { email: string; reason?: string },
+  ) {
+    return await this.authService.requestAccountDeletion(body.email, body.reason);
+  }
+
+  @Delete('account')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Eliminar cuenta del usuario autenticado' })
+  @ApiResponse({
+    status: 200,
+    description: 'Cuenta eliminada exitosamente',
+  })
+  async deleteAccount(@CurrentUser('id') userId: string) {
+    return await this.authService.deleteAccount(userId);
   }
 
   @Post('avatar')

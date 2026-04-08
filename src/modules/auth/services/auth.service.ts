@@ -214,6 +214,23 @@ export class AuthService {
     return await this.usersService.update(userId, { avatarUrl } as any);
   }
 
+  async requestAccountDeletion(email: string, reason?: string): Promise<{ message: string }> {
+    const user = await this.usersService.findByEmail(email);
+    if (user) {
+      // In production, queue a deletion job or send confirmation email
+      // For now, mark as pending deletion
+      await this.usersService.update(user.id, { status: UserStatus.BANNED } as any);
+    }
+    // Always return success to avoid email enumeration
+    return { message: 'Si el email está registrado, procesaremos tu solicitud dentro de los próximos 30 días.' };
+  }
+
+  async deleteAccount(userId: string): Promise<{ message: string }> {
+    await this.revokeAllTokens(userId);
+    await this.usersService.remove(userId);
+    return { message: 'Cuenta eliminada exitosamente' };
+  }
+
   async updateAvailability(userId: string, isAvailable: boolean): Promise<User> {
     return await this.usersService.update(userId, { isAvailable } as any);
   }
