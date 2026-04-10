@@ -41,7 +41,7 @@ export class TripAlert {
   @Column({ name: 'sent_by_user_id', type: 'uuid' })
   sentByUserId: string;
 
-  @ManyToOne(() => User, { eager: true })
+  @ManyToOne(() => User)
   @JoinColumn({ name: 'sent_by_user_id' })
   sentBy: User;
 
