@@ -45,6 +45,11 @@ export class OtpService {
   }
 
   async generateAndSendPhoneOtp(user: User): Promise<void> {
+    if (!user.phone) {
+      this.logger.warn(`No se puede generar OTP de teléfono para ${user.id}: sin teléfono`);
+      return;
+    }
+
     const otp = this.generateOtpCode();
     const key = `otp:phone:${user.id}`;
 

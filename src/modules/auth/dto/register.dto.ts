@@ -39,14 +39,15 @@ export class RegisterDto {
 
   @ApiProperty({
     example: '+5491123456789',
-    description: 'Teléfono con código de país',
+    description: 'Teléfono con código de país (opcional)',
+    required: false,
   })
   @IsString()
-  @IsNotEmpty({ message: 'El teléfono es requerido' })
-  @Matches(/^\+?[1-9]\d{1,14}$/, { 
-    message: 'El teléfono debe tener formato internacional válido' 
+  @IsOptional()
+  @Matches(/^\+?[1-9]\d{1,14}$/, {
+    message: 'El teléfono debe tener formato internacional válido',
   })
-  phone: string;
+  phone?: string;
 
   @ApiProperty({
     example: 'Juan',

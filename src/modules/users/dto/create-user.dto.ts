@@ -22,10 +22,10 @@ export class CreateUserDto {
   @MinLength(8)
   password: string;
 
-  @ApiProperty()
+  @ApiProperty({ required: false })
   @IsString()
-  @IsNotEmpty()
-  phone: string;
+  @IsOptional()
+  phone?: string;
 
   @ApiProperty()
   @IsString()
