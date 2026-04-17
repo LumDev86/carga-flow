@@ -14,6 +14,7 @@ import { TransportType } from '../../../shared/enums/transport-type.enum';
 import { CargoType } from '../../../shared/enums/cargo-type.enum';
 import { PaymentMethodEnum } from '../../../shared/enums/payment-method.enum';
 import { ArrivalStatus } from '../../../shared/enums/arrival-status.enum';
+import { PricingMode } from '../../../shared/enums/pricing-mode.enum';
 
 @Entity('trips')
 export class Trip {
@@ -271,6 +272,53 @@ export class Trip {
   @ManyToOne(() => Port, { nullable: true })
   @JoinColumn({ name: 'destination_port_id' })
   destinationPort: Port | null;
+
+  // --- Fuel tracking (ADR-001, ADR-004) ---
+  /**
+   * FIXED: precio se lockea al crear el trip (legacy behavior)
+   * REALTIME: precio sujeto a ajustes por variación de gasoil
+   */
+  @Column({
+    name: 'pricing_mode',
+    type: 'enum',
+    enum: PricingMode,
+    enumName: 'pricing_mode_enum',
+    default: PricingMode.REALTIME,
+  })
+  pricingMode: PricingMode;
+
+  @Column({ name: 'fuel_snapshot_id', type: 'uuid', nullable: true })
+  fuelSnapshotId: string | null;
+
+  /** Costo combustible incluido en el quoted price (para auditoría del ajuste) */
+  @Column({
+    name: 'base_fuel_cost',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+  })
+  baseFuelCost: string | null;
+
+  /** Acumulado de ajustes ACCEPTED + AUTO_APPLIED. Puede ser negativo. */
+  @Column({
+    name: 'total_fuel_adjustment',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+  })
+  totalFuelAdjustment: string;
+
+  /** price + total_fuel_adjustment, frozen on DELIVERED */
+  @Column({
+    name: 'actual_final_amount',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+  })
+  actualFinalAmount: string | null;
 
   // --- Timestamps ---
   @CreateDateColumn({ name: 'created_at' })

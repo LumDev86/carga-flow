@@ -1,0 +1,7 @@
+export enum AdjustmentStatus {
+  PROPOSED = 'PROPOSED',
+  AUTO_APPLIED = 'AUTO_APPLIED',
+  ACCEPTED = 'ACCEPTED',
+  REJECTED = 'REJECTED',
+  EXPIRED = 'EXPIRED',
+}

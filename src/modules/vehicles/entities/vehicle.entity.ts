@@ -11,6 +11,7 @@ import { User } from '../../users/entities/user.entity';
 import { TransportType } from '../../../shared/enums/transport-type.enum';
 import { EquipmentType } from '../../../shared/enums/equipment-type.enum';
 import { VehicleStatus } from '../../../shared/enums/vehicle-status.enum';
+import { FuelType } from '../../../shared/enums/fuel-type.enum';
 
 @Entity('vehicles')
 export class Vehicle {
@@ -118,6 +119,25 @@ export class Vehicle {
 
   @Column({ default: true, name: 'is_active' })
   isActive: boolean;
+
+  /** L/100km. Null = use fallback chain (equipment default → global default). ADR-007 */
+  @Column({
+    name: 'fuel_consumption',
+    type: 'decimal',
+    precision: 6,
+    scale: 2,
+    nullable: true,
+  })
+  fuelConsumption: string | null;
+
+  @Column({
+    name: 'fuel_type',
+    type: 'enum',
+    enum: FuelType,
+    enumName: 'fuel_type_enum',
+    default: FuelType.COMUN,
+  })
+  fuelType: FuelType;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

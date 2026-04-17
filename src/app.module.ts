@@ -25,6 +25,7 @@ import { PricingModule } from './modules/pricing/pricing.module';
 import { AssignmentModule } from './modules/assignment/assignment.module';
 import { AntiBypassModule } from './modules/anti-bypass/anti-bypass.module';
 import { TripAlertsModule } from './modules/trip-alerts/trip-alerts.module';
+import { FuelTrackingModule } from './modules/fuel-tracking/fuel-tracking.module';
 
 // Check if Redis is configured
 const isRedisConfigured = () => {
@@ -89,6 +90,7 @@ const conditionalImports = isRedisConfigured()
     AssignmentModule,
     AntiBypassModule,
     TripAlertsModule,
+    FuelTrackingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
