@@ -13,6 +13,7 @@ import { FeatureFlagService } from './feature-flag.service';
 import { FuelPriceQueryService } from './fuel-price-query.service';
 import { RedisLockService } from './redis-lock.service';
 import { FuelNotificationService } from './fuel-notification.service';
+import { FuelTrackingMetricsService } from './fuel-tracking-metrics.service';
 
 export interface PriceChangedEventPayload {
   priceHistoryId: string;
@@ -63,11 +64,13 @@ export class FuelTrackingRecalcService {
     private readonly priceQuery: FuelPriceQueryService,
     private readonly lockService: RedisLockService,
     private readonly notifier: FuelNotificationService,
+    private readonly metrics: FuelTrackingMetricsService,
   ) {}
 
   async recalculateForPriceChange(
     payload: PriceChangedEventPayload,
   ): Promise<RecalcResult> {
+    const startedAt = Date.now();
     const result: RecalcResult = {
       candidateTripsCount: 0,
       adjustmentsCreated: 0,
@@ -76,6 +79,7 @@ export class FuelTrackingRecalcService {
       locksSkipped: 0,
       errors: 0,
     };
+    this.metrics.inc('fuel.price.recalc.started');
 
     // Feature flag gate
     const trackingEnabled = await this.featureFlags.isEnabled(
@@ -178,6 +182,12 @@ export class FuelTrackingRecalcService {
               );
               if (adjustment) {
                 result.adjustmentsCreated++;
+                this.metrics.inc(
+                  `fuel.adjustment.created.${adjustment.status}`,
+                );
+                this.metrics.inc(
+                  `fuel.adjustment.policy.${adjustment.policyApplied}`,
+                );
                 this.notifier.notifyAdjustment(
                   adjustment,
                   trip.requesterId,
@@ -201,8 +211,13 @@ export class FuelTrackingRecalcService {
       );
     }
 
+    const durationMs = Date.now() - startedAt;
+    this.metrics.record('fuel.price.recalc.duration_ms', durationMs);
+    this.metrics.inc('fuel.price.recalc.completed');
+    if (result.errors > 0) this.metrics.inc('fuel.price.recalc.errors', result.errors);
+
     this.logger.log(
-      `Recalc complete for ${payload.priceHistoryId}: ${JSON.stringify(result)}`,
+      `Recalc complete for ${payload.priceHistoryId} in ${durationMs}ms: ${JSON.stringify(result)}`,
     );
     return result;
   }

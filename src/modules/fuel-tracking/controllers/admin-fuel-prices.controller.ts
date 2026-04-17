@@ -29,6 +29,7 @@ import { FuelPriceCommandService } from '../services/fuel-price-command.service'
 import { FuelPriceQueryService } from '../services/fuel-price-query.service';
 import { FuelAdjustmentQueryService } from '../services/fuel-adjustment-query.service';
 import { FeatureFlagService } from '../services/feature-flag.service';
+import { FuelTrackingMetricsService } from '../services/fuel-tracking-metrics.service';
 import { AdjustmentStatus } from '../../../shared/enums/adjustment-status.enum';
 import { AdjustmentPolicy } from '../../../shared/enums/adjustment-policy.enum';
 
@@ -193,5 +194,20 @@ export class AdminFeatureFlagsController {
     @Body('value') value: unknown,
   ) {
     return this.featureFlags.set(key, value, adminId);
+  }
+}
+
+@ApiTags('admin-fuel-tracking-metrics')
+@ApiBearerAuth('JWT-auth')
+@Controller('admin/fuel-tracking/metrics')
+@UseGuards(RolesGuard)
+@Roles(UserRole.ADMIN)
+export class AdminFuelTrackingMetricsController {
+  constructor(private readonly metrics: FuelTrackingMetricsService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Métricas del módulo fuel-tracking' })
+  async get() {
+    return this.metrics.snapshot();
   }
 }

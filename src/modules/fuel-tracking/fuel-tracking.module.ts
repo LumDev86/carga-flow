@@ -34,6 +34,7 @@ import { FuelTrackingRecalcService } from './services/fuel-tracking-recalc.servi
 import { RedisLockService } from './services/redis-lock.service';
 import { FuelNotificationService } from './services/fuel-notification.service';
 import { TripLifecycleHooksService } from './services/trip-lifecycle-hooks.service';
+import { FuelTrackingMetricsService } from './services/fuel-tracking-metrics.service';
 
 // Workers
 import { OutboxPollerService } from './workers/outbox-poller.service';
@@ -48,6 +49,7 @@ import {
   AdminFuelPricesController,
   AdminFuelAdjustmentsController,
   AdminFeatureFlagsController,
+  AdminFuelTrackingMetricsController,
 } from './controllers/admin-fuel-prices.controller';
 import {
   TripFuelTrackingController,
@@ -102,6 +104,7 @@ const workerProviders = isRedisConfigured()
     RedisLockService,
     FuelNotificationService,
     TripLifecycleHooksService,
+    FuelTrackingMetricsService,
     // cron (always on — no-op if feature flag off)
     AutoApplyDeadlineCron,
     // workers (only with Redis)
@@ -111,6 +114,7 @@ const workerProviders = isRedisConfigured()
     AdminFuelPricesController,
     AdminFuelAdjustmentsController,
     AdminFeatureFlagsController,
+    AdminFuelTrackingMetricsController,
     TripFuelTrackingController,
     TripLocationController,
     PublicFuelPricesController,
