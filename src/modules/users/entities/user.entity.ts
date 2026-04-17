@@ -28,8 +28,8 @@ export class User {
   @Exclude()
   password: string;
 
-  @Column()
-  phone: string;
+  @Column({ nullable: true })
+  phone?: string;
 
   @Column({ name: 'first_name' })
   firstName: string;
