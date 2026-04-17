@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bull';
 
 // Entities
 import { FuelPriceHistory } from './entities/fuel-price-history.entity';
@@ -10,35 +11,47 @@ import { IntegrationOutbox } from './entities/integration-outbox.entity';
 import { FeatureFlag } from './entities/feature-flag.entity';
 import { FuelAdjustmentNotification } from './entities/fuel-adjustment-notification.entity';
 
-// Cross-module entities needed for services
+// Cross-module entities
 import { Trip } from '../trips/entities/trip.entity';
 import { Vehicle } from '../vehicles/entities/vehicle.entity';
 import { PricingParameter } from '../pricing/entities/pricing-parameter.entity';
 
-// Services (command side - FASE 1.2)
+// Services — command
 import { VehicleConsumptionService } from './services/vehicle-consumption.service';
 import { KmCalculatorService } from './services/km-calculator.service';
 import { FuelPriceCommandService } from './services/fuel-price-command.service';
 import { FuelSnapshotService } from './services/fuel-snapshot.service';
 import { FuelAdjustmentService } from './services/fuel-adjustment.service';
 
-// Services (query side - FASE 1.3)
+// Services — query
 import { FeatureFlagService } from './services/feature-flag.service';
 import { FuelPriceQueryService } from './services/fuel-price-query.service';
 import { FuelAdjustmentQueryService } from './services/fuel-adjustment-query.service';
 
+// Services — orchestration (used by worker)
+import { FuelTrackingRecalcService } from './services/fuel-tracking-recalc.service';
+import { RedisLockService } from './services/redis-lock.service';
+
+// Workers
+import { OutboxPollerService } from './workers/outbox-poller.service';
+import { FuelPriceChangeProcessor } from './workers/fuel-price-change.processor';
+import { AutoApplyDeadlineCron } from './workers/auto-apply-deadline.cron';
+
 // Policies
 import { AdjustmentPolicyResolver } from './policies/adjustment-policy';
 
-/**
- * Fuel Tracking module — realtime gasoil adjustments.
- *
- * FASE 1.1: entities + migrations (done)
- * FASE 1.2: command side services (this commit)
- * FASE 1.3+: query side, worker, endpoints, integration
- *
- * See docs/fuel-tracking/README.md for full context.
- */
+// BullMQ queue registration — only when Redis is configured
+const isRedisConfigured = () =>
+  !!(process.env.REDIS_HOST && process.env.REDIS_PORT);
+
+const queueImports = isRedisConfigured()
+  ? [BullModule.registerQueue({ name: 'fuel-tracking' })]
+  : [];
+
+const workerProviders = isRedisConfigured()
+  ? [OutboxPollerService, FuelPriceChangeProcessor]
+  : [];
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -53,17 +66,27 @@ import { AdjustmentPolicyResolver } from './policies/adjustment-policy';
       Vehicle,
       PricingParameter,
     ]),
+    ...queueImports,
   ],
   providers: [
+    // command
     VehicleConsumptionService,
     KmCalculatorService,
     AdjustmentPolicyResolver,
     FuelPriceCommandService,
     FuelSnapshotService,
     FuelAdjustmentService,
+    // query
     FeatureFlagService,
     FuelPriceQueryService,
     FuelAdjustmentQueryService,
+    // orchestration
+    FuelTrackingRecalcService,
+    RedisLockService,
+    // cron (always on — no-op if feature flag off)
+    AutoApplyDeadlineCron,
+    // workers (only with Redis)
+    ...workerProviders,
   ],
   controllers: [],
   exports: [
@@ -77,6 +100,7 @@ import { AdjustmentPolicyResolver } from './policies/adjustment-policy';
     FeatureFlagService,
     FuelPriceQueryService,
     FuelAdjustmentQueryService,
+    FuelTrackingRecalcService,
   ],
 })
 export class FuelTrackingModule {}

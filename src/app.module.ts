@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
@@ -60,6 +61,9 @@ const conditionalImports = isRedisConfigured()
 
     // Database (TypeORM + PostgreSQL)
     DatabaseModule,
+
+    // Scheduled tasks (cron + intervals) — used by fuel-tracking workers
+    ScheduleModule.forRoot(),
 
     // Bull Queue (Redis) - only if configured
     ...conditionalImports,
