@@ -45,6 +45,9 @@ export class OtpService {
   }
 
   async generateAndSendPhoneOtp(user: User): Promise<void> {
+    if (!user.phone) {
+      throw new Error('No phone number registered for this user');
+    }
     const otp = this.generateOtpCode();
     const key = `otp:phone:${user.id}`;
 
