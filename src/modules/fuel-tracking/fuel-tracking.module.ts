@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
+import { EventsModule } from '../events/events.module';
 
 // Entities
 import { FuelPriceHistory } from './entities/fuel-price-history.entity';
@@ -31,6 +32,7 @@ import { FuelAdjustmentQueryService } from './services/fuel-adjustment-query.ser
 // Services — orchestration (used by worker)
 import { FuelTrackingRecalcService } from './services/fuel-tracking-recalc.service';
 import { RedisLockService } from './services/redis-lock.service';
+import { FuelNotificationService } from './services/fuel-notification.service';
 
 // Workers
 import { OutboxPollerService } from './workers/outbox-poller.service';
@@ -39,6 +41,19 @@ import { AutoApplyDeadlineCron } from './workers/auto-apply-deadline.cron';
 
 // Policies
 import { AdjustmentPolicyResolver } from './policies/adjustment-policy';
+
+// Controllers (FASE 1.5)
+import {
+  AdminFuelPricesController,
+  AdminFuelAdjustmentsController,
+  AdminFeatureFlagsController,
+} from './controllers/admin-fuel-prices.controller';
+import {
+  TripFuelTrackingController,
+  TripLocationController,
+} from './controllers/trip-fuel-tracking.controller';
+import { PublicFuelPricesController } from './controllers/public-fuel-prices.controller';
+import { VehicleFuelConfigController } from './controllers/vehicle-fuel-config.controller';
 
 // BullMQ queue registration — only when Redis is configured
 const isRedisConfigured = () =>
@@ -67,6 +82,7 @@ const workerProviders = isRedisConfigured()
       PricingParameter,
     ]),
     ...queueImports,
+    EventsModule,
   ],
   providers: [
     // command
@@ -83,12 +99,21 @@ const workerProviders = isRedisConfigured()
     // orchestration
     FuelTrackingRecalcService,
     RedisLockService,
+    FuelNotificationService,
     // cron (always on — no-op if feature flag off)
     AutoApplyDeadlineCron,
     // workers (only with Redis)
     ...workerProviders,
   ],
-  controllers: [],
+  controllers: [
+    AdminFuelPricesController,
+    AdminFuelAdjustmentsController,
+    AdminFeatureFlagsController,
+    TripFuelTrackingController,
+    TripLocationController,
+    PublicFuelPricesController,
+    VehicleFuelConfigController,
+  ],
   exports: [
     TypeOrmModule,
     VehicleConsumptionService,

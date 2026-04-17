@@ -12,6 +12,7 @@ import { AdjustmentPolicyResolver } from '../policies/adjustment-policy';
 import { FeatureFlagService } from './feature-flag.service';
 import { FuelPriceQueryService } from './fuel-price-query.service';
 import { RedisLockService } from './redis-lock.service';
+import { FuelNotificationService } from './fuel-notification.service';
 
 export interface PriceChangedEventPayload {
   priceHistoryId: string;
@@ -61,6 +62,7 @@ export class FuelTrackingRecalcService {
     private readonly featureFlags: FeatureFlagService,
     private readonly priceQuery: FuelPriceQueryService,
     private readonly lockService: RedisLockService,
+    private readonly notifier: FuelNotificationService,
   ) {}
 
   async recalculateForPriceChange(
@@ -127,6 +129,15 @@ export class FuelTrackingRecalcService {
     // Invalidate current-price cache so next read reflects new state
     await this.priceQuery.invalidateCurrentCache(payload.fuelType);
 
+    // Broadcast the price update globally (UI banners, charts)
+    this.notifier.notifyPriceUpdated({
+      fuelType: payload.fuelType,
+      oldPrice: payload.oldPrice,
+      newPrice: payload.newPrice,
+      pctChange: payload.pctChange,
+      effectiveFrom: payload.effectiveFrom,
+    });
+
     // Process in bounded parallelism
     const chunks = this.chunk(candidates, FuelTrackingRecalcService.TRIP_RECALC_PARALLELISM);
 
@@ -167,6 +178,11 @@ export class FuelTrackingRecalcService {
               );
               if (adjustment) {
                 result.adjustmentsCreated++;
+                this.notifier.notifyAdjustment(
+                  adjustment,
+                  trip.requesterId,
+                  trip.driverId,
+                );
               } else {
                 result.skippedOther++;
               }
