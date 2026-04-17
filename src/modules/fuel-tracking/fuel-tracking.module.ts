@@ -22,6 +22,11 @@ import { FuelPriceCommandService } from './services/fuel-price-command.service';
 import { FuelSnapshotService } from './services/fuel-snapshot.service';
 import { FuelAdjustmentService } from './services/fuel-adjustment.service';
 
+// Services (query side - FASE 1.3)
+import { FeatureFlagService } from './services/feature-flag.service';
+import { FuelPriceQueryService } from './services/fuel-price-query.service';
+import { FuelAdjustmentQueryService } from './services/fuel-adjustment-query.service';
+
 // Policies
 import { AdjustmentPolicyResolver } from './policies/adjustment-policy';
 
@@ -56,6 +61,9 @@ import { AdjustmentPolicyResolver } from './policies/adjustment-policy';
     FuelPriceCommandService,
     FuelSnapshotService,
     FuelAdjustmentService,
+    FeatureFlagService,
+    FuelPriceQueryService,
+    FuelAdjustmentQueryService,
   ],
   controllers: [],
   exports: [
@@ -66,6 +74,9 @@ import { AdjustmentPolicyResolver } from './policies/adjustment-policy';
     FuelPriceCommandService,
     FuelSnapshotService,
     FuelAdjustmentService,
+    FeatureFlagService,
+    FuelPriceQueryService,
+    FuelAdjustmentQueryService,
   ],
 })
 export class FuelTrackingModule {}
