@@ -26,6 +26,8 @@ import { TariffService } from '../tariffs/tariffs.service';
 import { WalletService } from '../wallet/wallet.service';
 import { WalletTransaction, WalletTransactionType } from '../wallet/entities/wallet-transaction.entity';
 import { PaymentsService } from '../payments/payments.service';
+import { TripLifecycleHooksService } from '../fuel-tracking/services/trip-lifecycle-hooks.service';
+import { PricingMode } from '../../shared/enums/pricing-mode.enum';
 import { PaymentMethodEnum } from '../../shared/enums/payment-method.enum';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { EstimateTripDto } from './dto/estimate-trip.dto';
@@ -78,6 +80,7 @@ export class TripsService {
     private readonly paymentsService: PaymentsService,
     private readonly vehiclesService: VehiclesService,
     private readonly portsService: PortsService,
+    private readonly fuelLifecycle: TripLifecycleHooksService,
     @Optional()
     @Inject('TRIPS_QUEUE')
     tripsQueueFallback: Queue | null,
@@ -259,6 +262,13 @@ export class TripsService {
       driverPayout = price - commission;
     }
 
+    // Fuel tracking: classify pricing mode based on distance. Short trips
+    // stay FIXED to avoid overhead; long trips are REALTIME candidates.
+    // Actual feature gating happens in the snapshot/recalc stage.
+    const realtimeThresholdKm = 50;
+    const pricingMode =
+      distanceKm >= realtimeThresholdKm ? PricingMode.REALTIME : PricingMode.FIXED;
+
     // Create trip
     const trip = this.tripRepository.create({
       requesterId: userId,
@@ -294,6 +304,7 @@ export class TripsService {
       })(),
       paymentMethod: dto.paymentMethod || PaymentMethodEnum.CASH,
       status: TripStatus.PENDING,
+      pricingMode,
     });
 
     // Auto-detect ports if not provided
@@ -763,6 +774,16 @@ export class TripsService {
 
     this.logger.log(`Trip ${tripId} accepted by driver ${driverId}`);
 
+    // Fuel tracking: create per-trip snapshot (gated by feature flag + rollout).
+    // Best-effort — errors are logged and swallowed so they don't break the flow.
+    await this.fuelLifecycle.onTripAccepted({
+      tripId,
+      driverId,
+      requesterId: fullTrip.requesterId,
+      pricingMode: fullTrip.pricingMode,
+      distanceKm: fullTrip.distanceKm,
+    });
+
     return fullTrip;
   }
 
@@ -969,6 +990,9 @@ export class TripsService {
 
     this.logger.log(`Trip ${tripId} delivered by driver ${driverId}`);
 
+    // Fuel tracking: freeze actual_final_amount + expire PROPOSED. Best-effort.
+    await this.fuelLifecycle.onTripDelivered(tripId);
+
     return savedTrip;
   }
 
@@ -1010,7 +1034,13 @@ export class TripsService {
         throw new BadRequestException('El flete de este viaje ya fue procesado');
       }
 
-      const actualFleteAmount = fleteAmount || Number(trip.price);
+      // Use actual_final_amount if fuel tracking produced adjustments; fall
+      // back to price otherwise. Explicit fleteAmount param overrides both
+      // (admin can enter the real amount received from the port).
+      const finalAmountFromTracking =
+        trip.actualFinalAmount != null ? Number(trip.actualFinalAmount) : null;
+      const baselineAmount = finalAmountFromTracking ?? Number(trip.price);
+      const actualFleteAmount = fleteAmount ?? baselineAmount;
       const commissionAmount = Number(trip.commission);
       const driverPayoutAmount = actualFleteAmount - commissionAmount;
 
@@ -1183,6 +1213,10 @@ export class TripsService {
     trip.cancelledAt = new Date();
 
     const savedTrip = await this.tripRepository.save(trip);
+
+    // Fuel tracking: expire PROPOSED adjustments (ACCEPTED/AUTO_APPLIED remain
+    // as they already impacted the trip total).
+    await this.fuelLifecycle.onTripCancelled(tripId);
 
     // Remove timeout and radius-expansion jobs
     if (this.tripsQueue) {

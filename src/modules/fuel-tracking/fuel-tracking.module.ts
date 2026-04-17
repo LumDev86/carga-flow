@@ -33,6 +33,7 @@ import { FuelAdjustmentQueryService } from './services/fuel-adjustment-query.ser
 import { FuelTrackingRecalcService } from './services/fuel-tracking-recalc.service';
 import { RedisLockService } from './services/redis-lock.service';
 import { FuelNotificationService } from './services/fuel-notification.service';
+import { TripLifecycleHooksService } from './services/trip-lifecycle-hooks.service';
 
 // Workers
 import { OutboxPollerService } from './workers/outbox-poller.service';
@@ -100,6 +101,7 @@ const workerProviders = isRedisConfigured()
     FuelTrackingRecalcService,
     RedisLockService,
     FuelNotificationService,
+    TripLifecycleHooksService,
     // cron (always on — no-op if feature flag off)
     AutoApplyDeadlineCron,
     // workers (only with Redis)
@@ -126,6 +128,7 @@ const workerProviders = isRedisConfigured()
     FuelPriceQueryService,
     FuelAdjustmentQueryService,
     FuelTrackingRecalcService,
+    TripLifecycleHooksService,
   ],
 })
 export class FuelTrackingModule {}

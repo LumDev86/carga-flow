@@ -17,6 +17,7 @@ import { VehiclesModule } from '../vehicles/vehicles.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PortsModule } from '../ports/ports.module';
+import { FuelTrackingModule } from '../fuel-tracking/fuel-tracking.module';
 
 // Check if Redis is configured
 const isRedisConfigured = () => {
@@ -51,6 +52,7 @@ const queueProvider = isRedisConfigured()
     WalletModule,
     PaymentsModule,
     PortsModule,
+    FuelTrackingModule,
   ],
   controllers: [TripsController],
   providers: [TripsService, ...bullProviders, ...queueProvider],
