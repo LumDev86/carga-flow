@@ -34,8 +34,8 @@ export class KmCalculatorService {
   private static readonly EARTH_RADIUS_KM = 6371;
   private static readonly MAX_ACCURACY_M = 100;
   private static readonly MAX_SPEED_KMH = 140;
-  private static readonly MAX_GAP_MINUTES = 5;
-  private static readonly MAX_GAP_KM = 10;
+  /** Implicit speed threshold for teleport detection (physically impossible). */
+  private static readonly MAX_IMPLICIT_SPEED_KMH = 200;
 
   constructor(
     @InjectRepository(TripLocationHistory)
@@ -92,20 +92,21 @@ export class KmCalculatorService {
         continue;
       }
 
-      // teleport filter — gap to previous accepted point
+      // teleport filter — implicit speed between previous and current point
+      // must be physically plausible (≤ 200 km/h for heavy trucks)
       if (result.length > 0) {
         const prev = result[result.length - 1];
-        const dtMin =
-          (p.recordedAt.getTime() - prev.recordedAt.getTime()) / 60000;
-        const dKm = this.haversine(
-          { latitude: Number(prev.latitude), longitude: Number(prev.longitude) },
-          { latitude: Number(p.latitude), longitude: Number(p.longitude) },
-        );
-        if (
-          dtMin > KmCalculatorService.MAX_GAP_MINUTES &&
-          dKm > KmCalculatorService.MAX_GAP_KM
-        ) {
-          continue;
+        const dtHours =
+          (p.recordedAt.getTime() - prev.recordedAt.getTime()) / 3_600_000;
+        if (dtHours > 0) {
+          const dKm = this.haversine(
+            { latitude: Number(prev.latitude), longitude: Number(prev.longitude) },
+            { latitude: Number(p.latitude), longitude: Number(p.longitude) },
+          );
+          const implicitSpeed = dKm / dtHours;
+          if (implicitSpeed > KmCalculatorService.MAX_IMPLICIT_SPEED_KMH) {
+            continue;
+          }
         }
       }
 
