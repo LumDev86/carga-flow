@@ -35,6 +35,8 @@ import { RedisLockService } from './services/redis-lock.service';
 import { FuelNotificationService } from './services/fuel-notification.service';
 import { TripLifecycleHooksService } from './services/trip-lifecycle-hooks.service';
 import { FuelTrackingMetricsService } from './services/fuel-tracking-metrics.service';
+import { FuelAdjustmentEmailService } from './services/fuel-adjustment-email.service';
+import { User } from '../users/entities/user.entity';
 
 // Workers
 import { OutboxPollerService } from './workers/outbox-poller.service';
@@ -83,6 +85,7 @@ const workerProviders = isRedisConfigured()
       Trip,
       Vehicle,
       PricingParameter,
+      User,
     ]),
     ...queueImports,
     EventsModule,
@@ -105,6 +108,7 @@ const workerProviders = isRedisConfigured()
     FuelNotificationService,
     TripLifecycleHooksService,
     FuelTrackingMetricsService,
+    FuelAdjustmentEmailService,
     // cron (always on — no-op if feature flag off)
     AutoApplyDeadlineCron,
     // workers (only with Redis)

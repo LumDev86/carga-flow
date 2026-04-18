@@ -14,6 +14,7 @@ import { FuelPriceQueryService } from './fuel-price-query.service';
 import { RedisLockService } from './redis-lock.service';
 import { FuelNotificationService } from './fuel-notification.service';
 import { FuelTrackingMetricsService } from './fuel-tracking-metrics.service';
+import { FuelAdjustmentEmailService } from './fuel-adjustment-email.service';
 
 export interface PriceChangedEventPayload {
   priceHistoryId: string;
@@ -65,6 +66,7 @@ export class FuelTrackingRecalcService {
     private readonly lockService: RedisLockService,
     private readonly notifier: FuelNotificationService,
     private readonly metrics: FuelTrackingMetricsService,
+    private readonly emailService: FuelAdjustmentEmailService,
   ) {}
 
   async recalculateForPriceChange(
@@ -193,6 +195,8 @@ export class FuelTrackingRecalcService {
                   trip.requesterId,
                   trip.driverId,
                 );
+                // Email fire-and-forget (doesn't block recalc loop)
+                void this.emailService.sendForAdjustment(adjustment);
               } else {
                 result.skippedOther++;
               }
