@@ -30,6 +30,7 @@ import { FuelPriceQueryService } from '../services/fuel-price-query.service';
 import { FuelAdjustmentQueryService } from '../services/fuel-adjustment-query.service';
 import { FeatureFlagService } from '../services/feature-flag.service';
 import { FuelTrackingMetricsService } from '../services/fuel-tracking-metrics.service';
+import { FuelPriceAutoFetchService } from '../services/fuel-price-auto-fetch.service';
 import { AdjustmentStatus } from '../../../shared/enums/adjustment-status.enum';
 import { AdjustmentPolicy } from '../../../shared/enums/adjustment-policy.enum';
 
@@ -209,5 +210,24 @@ export class AdminFuelTrackingMetricsController {
   @ApiOperation({ summary: 'Métricas del módulo fuel-tracking' })
   async get() {
     return this.metrics.snapshot();
+  }
+}
+
+@ApiTags('admin-fuel-tracking-autofetch')
+@ApiBearerAuth('JWT-auth')
+@Controller('admin/fuel-tracking/autofetch')
+@UseGuards(RolesGuard)
+@Roles(UserRole.ADMIN)
+export class AdminFuelAutoFetchController {
+  constructor(private readonly autoFetch: FuelPriceAutoFetchService) {}
+
+  @Post('run')
+  @ApiOperation({
+    summary:
+      'Dispara auto-fetch del dataset oficial manualmente (además del cron diario)',
+  })
+  async run() {
+    const results = await this.autoFetch.fetchAndRegister();
+    return { ranAt: new Date().toISOString(), results };
   }
 }

@@ -36,6 +36,8 @@ import { FuelNotificationService } from './services/fuel-notification.service';
 import { TripLifecycleHooksService } from './services/trip-lifecycle-hooks.service';
 import { FuelTrackingMetricsService } from './services/fuel-tracking-metrics.service';
 import { FuelAdjustmentEmailService } from './services/fuel-adjustment-email.service';
+import { FuelPriceAutoFetchService } from './services/fuel-price-auto-fetch.service';
+import { FuelPriceFetchCron } from './workers/fuel-price-fetch.cron';
 import { User } from '../users/entities/user.entity';
 
 // Workers
@@ -52,6 +54,7 @@ import {
   AdminFuelAdjustmentsController,
   AdminFeatureFlagsController,
   AdminFuelTrackingMetricsController,
+  AdminFuelAutoFetchController,
 } from './controllers/admin-fuel-prices.controller';
 import {
   TripFuelTrackingController,
@@ -109,6 +112,8 @@ const workerProviders = isRedisConfigured()
     TripLifecycleHooksService,
     FuelTrackingMetricsService,
     FuelAdjustmentEmailService,
+    FuelPriceAutoFetchService,
+    FuelPriceFetchCron,
     // cron (always on — no-op if feature flag off)
     AutoApplyDeadlineCron,
     // workers (only with Redis)
@@ -119,6 +124,7 @@ const workerProviders = isRedisConfigured()
     AdminFuelAdjustmentsController,
     AdminFeatureFlagsController,
     AdminFuelTrackingMetricsController,
+    AdminFuelAutoFetchController,
     TripFuelTrackingController,
     TripLocationController,
     PublicFuelPricesController,
