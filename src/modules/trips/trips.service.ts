@@ -8,7 +8,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, LessThan, Repository } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { Trip } from './entities/trip.entity';
@@ -48,6 +48,15 @@ import { PortsService } from '../ports/ports.service';
 import * as bcrypt from 'bcrypt';
 
 const ASSIGNMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Trips en estado PENDING/BROADCAST expiran automáticamente cuando:
+ *   - ya pasó su scheduled_pickup_at, o
+ *   - llevan más de TRIP_HARD_CUTOFF_HOURS desde creados (default 48h).
+ * Se limpian con el cron TripsExpiryCron (cada 15 min).
+ */
+const TRIP_HARD_CUTOFF_HOURS = 48;
+const EXPIRABLE_STATUSES: TripStatus[] = [TripStatus.PENDING, TripStatus.BROADCAST];
 
 const CARGO_EQUIPMENT_MAP: Record<CargoType, EquipmentType[] | null> = {
   [CargoType.GRANOS_DERIVADOS]: [EquipmentType.TOLVA, EquipmentType.CISTERNA, EquipmentType.BATEA, EquipmentType.ESCALABLE, EquipmentType.BITREN],
@@ -2325,5 +2334,85 @@ export class TripsService {
     if (data.notes !== undefined) obs.notes = data.notes;
 
     return this.qualityObservationRepository.save(obs);
+  }
+
+  /**
+   * Marca como EXPIRED los trips PENDING/BROADCAST que ya no tienen
+   * sentido mostrar a los choferes:
+   *   1) `scheduled_pickup_at` vencido → el dador lo pidió para una fecha
+   *      ya pasada; un chofer que lo acepte no va a llegar a tiempo.
+   *   2) Más de TRIP_HARD_CUTOFF_HOURS (48h) desde creación → cutoff
+   *      absoluto, protección por si no hay scheduled_pickup_at.
+   *
+   * Por cada trip expirado:
+   *   - UPDATE status = EXPIRED
+   *   - WS `trip:expired` al dador y a la room del trip
+   *   - Push notification al dador (best-effort)
+   *
+   * Idempotente: ejecutar múltiples veces no duplica cambios. Best-effort
+   * en las notificaciones (fallos no rompen la expiración).
+   */
+  async expireStaleTrips(): Promise<{ expired: number; errors: number }> {
+    const now = new Date();
+    const hardCutoff = new Date(now.getTime() - TRIP_HARD_CUTOFF_HOURS * 60 * 60 * 1000);
+
+    // Candidatos: PENDING/BROADCAST con pickup vencido o cutoff superado.
+    // Usamos query builder para soportar el OR en el where.
+    const candidates = await this.tripRepository
+      .createQueryBuilder('trip')
+      .where('trip.status IN (:...statuses)', { statuses: EXPIRABLE_STATUSES })
+      .andWhere(
+        '(trip.scheduledPickupAt IS NOT NULL AND trip.scheduledPickupAt < :now) OR trip.createdAt < :hardCutoff',
+        { now, hardCutoff },
+      )
+      .getMany();
+
+    if (candidates.length === 0) {
+      return { expired: 0, errors: 0 };
+    }
+
+    let expired = 0;
+    let errors = 0;
+
+    for (const trip of candidates) {
+      try {
+        trip.status = TripStatus.EXPIRED;
+        await this.tripRepository.save(trip);
+        expired++;
+
+        // WS al dador + a la room del trip (best-effort)
+        try {
+          this.eventsGateway.emitToUser(trip.requesterId, 'trip:expired', {
+            tripId: trip.id,
+            status: TripStatus.EXPIRED,
+            reason: trip.scheduledPickupAt && trip.scheduledPickupAt < now
+              ? 'pickup_date_passed'
+              : 'no_drivers_in_time',
+          });
+          this.eventsGateway.emitTripUpdate(trip.id, 'trip:expired', trip);
+        } catch (wsErr) {
+          this.logger.warn(`WS emit failed for expired trip ${trip.id}: ${wsErr instanceof Error ? wsErr.message : String(wsErr)}`);
+        }
+
+        // Push al dador (best-effort — si no tiene token, noop)
+        try {
+          await this.pushNotificationService.sendToUser(trip.requesterId, {
+            title: 'Tu solicitud expiró',
+            body: `Tu solicitud de transporte${trip.cargoDescription ? ` de ${trip.cargoDescription}` : ''} expiró por falta de transportista disponible.`,
+            data: { tripId: trip.id, type: 'trip:expired' },
+          });
+        } catch (pushErr) {
+          this.logger.warn(`Push failed for expired trip ${trip.id}: ${pushErr instanceof Error ? pushErr.message : String(pushErr)}`);
+        }
+      } catch (err) {
+        errors++;
+        this.logger.error(
+          `Error al expirar trip ${trip.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    this.logger.log(`expireStaleTrips: ${expired} expired, ${errors} errors (checked ${candidates.length})`);
+    return { expired, errors };
   }
 }

@@ -8,6 +8,7 @@ import { QualityObservation } from './entities/quality-observation.entity';
 import { TripsController } from './trips.controller';
 import { TripsService } from './trips.service';
 import { AssignmentProcessor } from './processors/assignment.processor';
+import { TripsExpiryCron } from './workers/trips-expiry.cron';
 import { EventsModule } from '../events/events.module';
 import { GeolocationModule } from '../geolocation/geolocation.module';
 import { User } from '../users/entities/user.entity';
@@ -55,7 +56,7 @@ const queueProvider = isRedisConfigured()
     FuelTrackingModule,
   ],
   controllers: [TripsController],
-  providers: [TripsService, ...bullProviders, ...queueProvider],
+  providers: [TripsService, TripsExpiryCron, ...bullProviders, ...queueProvider],
   exports: [TripsService],
 })
 export class TripsModule {}
