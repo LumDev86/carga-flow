@@ -14,6 +14,8 @@ import type { Cache } from 'cache-manager';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { UsersService } from '../../users/users.service';
+import { VehiclesService } from '../../vehicles/vehicles.service';
+import { UserRole } from '../../../shared/enums/user-role.enum';
 import { OtpService } from './otp.service';
 import { RefreshToken } from '../../users/entities/refresh-token.entity';
 import { User } from '../../users/entities/user.entity';
@@ -29,6 +31,7 @@ import { UpdateUserDto } from '../../users/dto/update-user.dto';
 export class AuthService {
   constructor(
     private readonly usersService: UsersService,
+    private readonly vehiclesService: VehiclesService,
     private readonly jwtService: JwtService,
     private readonly otpService: OtpService,
     private readonly configService: ConfigService,
@@ -232,6 +235,15 @@ export class AuthService {
   }
 
   async updateAvailability(userId: string, isAvailable: boolean): Promise<User> {
+    // Al marcarse "disponible", el chofer debe tener vehículo APROBADO +
+    // todos los documentos vigentes. Si falta algo, el mensaje del
+    // BadRequest le dice exactamente qué. Para otros roles no aplica.
+    if (isAvailable) {
+      const user = await this.usersService.findOne(userId);
+      if (user?.rol === UserRole.CHOFER) {
+        await this.vehiclesService.validateDriverDocuments(userId);
+      }
+    }
     return await this.usersService.update(userId, { isAvailable } as any);
   }
 
