@@ -37,9 +37,58 @@ interface FetchConfig {
 const DEFAULTS: FetchConfig = {
   brand: 'YPF',
   province: 'BUENOS AIRES',
-  freshnessDays: 30,
+  freshnessDays: 14,
   minPctChange: 0.005, // 0.5%
 };
+
+/**
+ * Orden de provincias a intentar si la provincia principal no tiene
+ * muestras fresh para la marca/tipo. Cubre ~80% del mercado argentino.
+ */
+const PROVINCE_FALLBACK_ORDER = [
+  'BUENOS AIRES',
+  'CAPITAL FEDERAL',
+  'SANTA FE',
+  'CORDOBA',
+];
+
+/**
+ * Helper puro (testeable aparte). Dada la lista de filas del CSV ya filtrada
+ * por producto + marca + ventana de frescura, recorre provinceOrder y devuelve
+ * el primer set de muestras no vacío con la provincia que lo produjo.
+ */
+export function selectSamplesByProvince(
+  baseFiltered: Array<Record<string, string>>,
+  provinceOrder: string[],
+): { samples: number[]; provinceUsed: string | null } {
+  for (const prov of provinceOrder) {
+    const samples = baseFiltered
+      .filter((r) => (r.provincia || '').toUpperCase() === prov)
+      .map((r) => Number(r.precio))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (samples.length > 0) {
+      return { samples, provinceUsed: prov };
+    }
+  }
+  return { samples: [], provinceUsed: null };
+}
+
+/**
+ * Helper puro: hash determinista por (día + tipo + precio mediano en centavos).
+ * Dos runs con el mismo precio generan el mismo hash (→ idempotent hit);
+ * precio distinto genera hash distinto (→ nuevo registro).
+ */
+export function computeIdempotencyKey(
+  isoDate: string,
+  fuelType: FuelType,
+  medianPrice: number,
+): string {
+  const medianCents = Math.round(medianPrice * 100);
+  return createHash('sha256')
+    .update(`autofetch-${isoDate}-${fuelType}-${medianCents}-secenergia`)
+    .digest('hex')
+    .slice(0, 32);
+}
 
 export interface FetchResult {
   fuelType: FuelType;
@@ -48,12 +97,14 @@ export interface FetchResult {
     | 'skipped_no_change'
     | 'skipped_below_threshold'
     | 'skipped_idempotent'
+    | 'skipped_no_upstream_change'
     | 'no_data'
     | 'error';
   samples?: number;
   medianPrice?: number;
   previousPrice?: number | null;
   pctChange?: number;
+  provinceUsed?: string;
   error?: string;
 }
 
@@ -72,6 +123,15 @@ export class FuelPriceAutoFetchService {
   private readonly logger = new Logger(FuelPriceAutoFetchService.name);
   private static readonly ADMIN_BOT_EMAIL = 'admin@cargaflow.com';
   private static readonly FETCH_TIMEOUT_MS = 30_000;
+  private static readonly HEAD_TIMEOUT_MS = 10_000;
+
+  /**
+   * Cache en memoria de la última respuesta upstream (ETag / Last-Modified).
+   * Se pierde en pod restart — en ese caso se descarga el CSV completo, lo cual
+   * es aceptable (9 MB una vez post-restart). Permite que corridas sucesivas
+   * del cron salteen el GET si el dataset no cambió.
+   */
+  private lastFetchMetadata: { etag?: string; lastModified?: string } = {};
 
   constructor(
     @InjectRepository(PricingParameter)
@@ -104,6 +164,20 @@ export class FuelPriceAutoFetchService {
         `Admin user ${FuelPriceAutoFetchService.ADMIN_BOT_EMAIL} not found — cannot register prices`,
       );
       return [];
+    }
+
+    // Short-circuit: si el dataset upstream no cambió desde el último fetch
+    // exitoso, evitamos bajar 9 MB por nada. Seguro contra HEAD no soportado:
+    // en ese caso bajamos igual.
+    const upstreamChanged = await this.hasUpstreamChanged();
+    if (!upstreamChanged) {
+      this.logger.log(
+        'Upstream dataset unchanged since last successful fetch (HEAD check), skipping',
+      );
+      return [
+        { fuelType: FuelType.COMUN, status: 'skipped_no_upstream_change' },
+        { fuelType: FuelType.PREMIUM, status: 'skipped_no_upstream_change' },
+      ];
     }
 
     let csv: string;
@@ -179,7 +253,70 @@ export class FuelPriceAutoFetchService {
       if (!res.ok) {
         throw new Error(`Dataset HTTP ${res.status}`);
       }
+      // Capturar metadata upstream del GET también — algunos mirrors CDN
+      // exponen ETag/Last-Modified en GET pero no en HEAD.
+      const etag = res.headers.get('etag') || undefined;
+      const lastModified = res.headers.get('last-modified') || undefined;
+      if (etag || lastModified) {
+        this.lastFetchMetadata = { etag, lastModified };
+      }
       return await res.text();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Hace un HEAD al dataset y compara ETag / Last-Modified con la última
+   * corrida exitosa. Si match → skip; si no match o metadata ausente o HEAD
+   * falla → devuelve true (por las dudas, bajamos).
+   */
+  private async hasUpstreamChanged(): Promise<boolean> {
+    // Si nunca hicimos un fetch exitoso, siempre intentar
+    if (!this.lastFetchMetadata.etag && !this.lastFetchMetadata.lastModified) {
+      return true;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      FuelPriceAutoFetchService.HEAD_TIMEOUT_MS,
+    );
+    try {
+      const res = await fetch(DATASET_CSV_URL, {
+        method: 'HEAD',
+        signal: controller.signal,
+        headers: { 'User-Agent': 'CargaFlow/1.0 fuel-tracking' },
+      });
+      if (!res.ok) {
+        this.logger.warn(`HEAD check returned ${res.status}, falling through to GET`);
+        return true;
+      }
+      const etag = res.headers.get('etag') || undefined;
+      const lastModified = res.headers.get('last-modified') || undefined;
+
+      // Si ni ETag ni Last-Modified, no podemos comparar → siempre GET
+      if (!etag && !lastModified) return true;
+
+      const etagSame =
+        this.lastFetchMetadata.etag && etag
+          ? etag === this.lastFetchMetadata.etag
+          : false;
+      const lmSame =
+        this.lastFetchMetadata.lastModified && lastModified
+          ? lastModified === this.lastFetchMetadata.lastModified
+          : false;
+
+      // Cambió si ambos están disponibles y alguno difiere; o si solo uno
+      // está disponible y ese difiere.
+      if (etag && lastModified) return !(etagSame && lmSame);
+      if (etag) return !etagSame;
+      if (lastModified) return !lmSame;
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`HEAD check failed (${msg}), falling through to GET`);
+      return true;
     } finally {
       clearTimeout(timer);
     }
@@ -239,20 +376,37 @@ export class FuelPriceAutoFetchService {
       Date.now() - config.freshnessDays * 24 * 60 * 60 * 1000,
     );
 
-    const samples = allRows
+    // Pre-filter por producto + marca + ventana de frescura. El fallback de
+    // provincia se aplica sobre el subconjunto resultante.
+    const baseFiltered = allRows
       .filter((r) => r.idproducto === targetIdProducto)
       .filter((r) => (r.empresabandera || '').toUpperCase() === brandUpper)
-      .filter((r) => (r.provincia || '').toUpperCase() === provinceUpper)
       .filter((r) => {
         const d = new Date(r.fecha_vigencia);
         return !Number.isNaN(d.getTime()) && d >= freshnessCutoff;
-      })
-      .map((r) => Number(r.precio))
-      .filter((n) => Number.isFinite(n) && n > 0);
+      });
 
-    if (samples.length === 0) {
+    // Intentar primero con la provincia configurada; si no hay muestras,
+    // recorrer el orden de fallback (sin repetir la ya probada).
+    const provincesTry = [
+      provinceUpper,
+      ...PROVINCE_FALLBACK_ORDER.filter((p) => p !== provinceUpper),
+    ];
+
+    const { samples, provinceUsed } = selectSamplesByProvince(
+      baseFiltered,
+      provincesTry,
+    );
+
+    if (provinceUsed && provinceUsed !== provinceUpper) {
+      this.logger.log(
+        `${fuelType}: no samples in ${provinceUpper}, falling back to ${provinceUsed} (${samples.length} samples)`,
+      );
+    }
+
+    if (samples.length === 0 || !provinceUsed) {
       this.logger.warn(
-        `No samples found for ${fuelType} (brand=${config.brand}, province=${config.province})`,
+        `No samples found for ${fuelType} in any province (brand=${config.brand}, tried=[${provincesTry.join(', ')}])`,
       );
       return { fuelType, status: 'no_data' };
     }
@@ -284,31 +438,34 @@ export class FuelPriceAutoFetchService {
         medianPrice: median,
         previousPrice,
         pctChange,
+        provinceUsed,
       };
     }
 
-    // Deterministic idempotency key per day+type+source → re-runs same day are no-ops
+    // Idempotency key determinística por (día + tipo + precio mediano en
+    // centavos). Permite que el cron corra N veces por día: mismo precio →
+    // mismo hash → skipped_idempotent; precio distinto → nuevo hash → nuevo
+    // registro. Sin esto, aumentar la frecuencia del cron era inútil.
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    const idempotencyKey = createHash('sha256')
-      .update(`autofetch-${today}-${fuelType}-secenergia`)
-      .digest('hex')
-      .slice(0, 32);
+    const idempotencyKey = computeIdempotencyKey(today, fuelType, median);
 
     try {
-      const { record, wasIdempotentHit } = await this.cmd.registerPriceChange(
+      const { wasIdempotentHit } = await this.cmd.registerPriceChange(
         adminId,
         {
           fuelType,
           pricePerLiter: Math.round(median * 100) / 100,
           source: FuelSource.API_ENARGAS,
-          sourceRef: `datos.energia.gob.ar / ${config.brand} ${config.province} · mediana de ${samples.length} muestras (${config.freshnessDays}d)`,
+          sourceRef: `datos.energia.gob.ar / ${config.brand} ${provinceUsed} · mediana de ${samples.length} muestras (${config.freshnessDays}d)`,
           notes: `Auto-fetched ${today}`,
         },
         idempotencyKey,
       );
 
       if (wasIdempotentHit) {
-        this.logger.log(`${fuelType}: already registered today (idempotent)`);
+        this.logger.log(
+          `${fuelType}: same price already registered today (idempotent)`,
+        );
         return {
           fuelType,
           status: 'skipped_idempotent',
@@ -316,11 +473,12 @@ export class FuelPriceAutoFetchService {
           medianPrice: median,
           previousPrice,
           pctChange: pctChange ?? undefined,
+          provinceUsed,
         };
       }
 
       this.logger.log(
-        `${fuelType}: registered $${median.toFixed(2)}/L (${samples.length} samples, ${pctChange !== null ? (pctChange * 100).toFixed(2) + '%' : 'no prior'})`,
+        `${fuelType}: registered $${median.toFixed(2)}/L from ${provinceUsed} (${samples.length} samples, ${pctChange !== null ? (pctChange * 100).toFixed(2) + '%' : 'no prior'})`,
       );
       return {
         fuelType,
@@ -329,6 +487,7 @@ export class FuelPriceAutoFetchService {
         medianPrice: median,
         previousPrice,
         pctChange: pctChange ?? undefined,
+        provinceUsed,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

@@ -3,14 +3,16 @@ import { Cron } from '@nestjs/schedule';
 import { FuelPriceAutoFetchService } from '../services/fuel-price-auto-fetch.service';
 
 /**
- * Daily cron that downloads the official fuel price dataset and
- * registers prices automatically. Idempotent (same day → no-op).
+ * Cron que descarga el dataset oficial de precios en surtidor y registra
+ * cambios automáticamente. Idempotente por (día + tipo + precio mediano):
+ * re-runs con el mismo precio son no-op, precio distinto genera nuevo registro.
  *
- * Schedule: 06:00 America/Argentina/Buenos_Aires (early morning,
- * dataset is usually refreshed overnight).
+ * Schedule: cada 4 horas (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 BsAs).
+ * El primer run del día siempre baja el CSV; los siguientes saltean el GET
+ * si el HEAD indica que el dataset upstream no cambió (ETag / Last-Modified).
  *
- * Gated by FUEL_AUTO_FETCH_ENABLED feature flag.
- * Failures are logged; never breaks anything else.
+ * Gateado por feature flag FUEL_AUTO_FETCH_ENABLED.
+ * Los errores se loguean; nunca rompen nada más.
  */
 @Injectable()
 export class FuelPriceFetchCron {
@@ -18,7 +20,7 @@ export class FuelPriceFetchCron {
 
   constructor(private readonly autoFetch: FuelPriceAutoFetchService) {}
 
-  @Cron('0 6 * * *', {
+  @Cron('0 */4 * * *', {
     name: 'fuel-price-autofetch',
     timeZone: 'America/Argentina/Buenos_Aires',
   })
