@@ -484,6 +484,124 @@ export class AdminService {
     return withdrawal;
   }
 
+  // ---- Drivers live map (CRM) ----
+
+  /**
+   * Lista de choferes con ubicación conocida para el mapa en vivo.
+   * @param status   'all' | 'in_transit' (default 'all')
+   * @param sinceMs  filtrar por lastLocationAt >= now - sinceMs (opcional)
+   */
+  async getDriverLocations(filters: { status?: 'all' | 'in_transit'; sinceMs?: number }) {
+    const status = filters.status ?? 'all';
+
+    const qb = this.userRepository
+      .createQueryBuilder('user')
+      .where('user.rol = :rol', { rol: UserRole.CHOFER })
+      .andWhere('user.latitude IS NOT NULL')
+      .andWhere('user.longitude IS NOT NULL');
+
+    if (filters.sinceMs && filters.sinceMs > 0) {
+      const since = new Date(Date.now() - filters.sinceMs);
+      qb.andWhere('user.lastLocationAt >= :since', { since });
+    }
+
+    const drivers = await qb.getMany();
+
+    const driverIds = drivers.map((d) => d.id);
+    const activeTrips =
+      driverIds.length > 0
+        ? await this.tripRepository
+            .createQueryBuilder('trip')
+            .where('trip.driverId IN (:...driverIds)', { driverIds })
+            .andWhere('trip.status = :status', { status: TripStatus.IN_TRANSIT })
+            .getMany()
+        : [];
+
+    const activeByDriver = new Map<string, Trip>();
+    for (const t of activeTrips) {
+      if (t.driverId) activeByDriver.set(t.driverId, t);
+    }
+
+    const result = drivers.map((d) => {
+      const t = activeByDriver.get(d.id);
+      return {
+        driverId: d.id,
+        firstName: d.firstName,
+        lastName: d.lastName,
+        latitude: d.latitude !== null ? Number(d.latitude) : null,
+        longitude: d.longitude !== null ? Number(d.longitude) : null,
+        lastLocationAt: d.lastLocationAt,
+        hasActiveTrip: !!t,
+        activeTripId: t?.id ?? null,
+      };
+    });
+
+    if (status === 'in_transit') {
+      return result.filter((r) => r.hasActiveTrip);
+    }
+    return result;
+  }
+
+  /**
+   * Snapshot completo de un chofer para el side panel del mapa CRM.
+   */
+  async getDriverSnapshot(driverId: string) {
+    const driver = await this.userRepository.findOne({
+      where: { id: driverId, rol: UserRole.CHOFER },
+    });
+    if (!driver) throw new NotFoundException('Chofer no encontrado');
+
+    const [vehicles, completedTripsCount, activeTrip] = await Promise.all([
+      this.vehicleRepository.find({
+        where: { userId: driverId },
+        order: { createdAt: 'ASC' },
+      }),
+      this.tripRepository.count({
+        where: { driverId, status: TripStatus.DELIVERED },
+      }),
+      this.tripRepository.findOne({
+        where: { driverId, status: TripStatus.IN_TRANSIT },
+      }),
+    ]);
+
+    const primaryVehicle = vehicles[0] ?? null;
+
+    return {
+      driverId: driver.id,
+      firstName: driver.firstName,
+      lastName: driver.lastName,
+      email: driver.email,
+      phone: driver.phone ?? null,
+      estado: driver.estado,
+      walletBalance: Number(driver.walletBalance ?? 0),
+      registeredAt: driver.createdAt,
+      lastLocationAt: driver.lastLocationAt,
+      latitude: driver.latitude !== null ? Number(driver.latitude) : null,
+      longitude: driver.longitude !== null ? Number(driver.longitude) : null,
+      completedTrips: completedTripsCount,
+      vehicle: primaryVehicle
+        ? {
+            id: primaryVehicle.id,
+            plate: primaryVehicle.plate,
+            brand: primaryVehicle.brand,
+            model: primaryVehicle.model,
+            year: primaryVehicle.year,
+            type: primaryVehicle.type,
+            approvalStatus: primaryVehicle.approvalStatus,
+          }
+        : null,
+      activeTrip: activeTrip
+        ? {
+            id: activeTrip.id,
+            status: activeTrip.status,
+            originAddress: (activeTrip as any).originAddress ?? null,
+            destinationAddress: (activeTrip as any).destinationAddress ?? null,
+            destinationPortId: activeTrip.destinationPortId ?? null,
+          }
+        : null,
+    };
+  }
+
   // ---- Port User Management ----
 
   async createPortUser(portId: string, dto: CreatePortUserDto): Promise<User> {

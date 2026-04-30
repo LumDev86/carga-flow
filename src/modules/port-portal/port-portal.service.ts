@@ -243,6 +243,60 @@ export class PortPortalService {
     return { arrivals, departures };
   }
 
+  /**
+   * Lista de entregas en curso al puerto, con la última ubicación del chofer.
+   * Solo trips IN_TRANSIT cuyo destino es este puerto.
+   * NO expone email/teléfono del chofer (canal de contacto vía alertas in-app).
+   */
+  async getActiveDeliveries(portId: string): Promise<
+    Array<{
+      tripId: string;
+      driverId: string;
+      driverName: string;
+      plate: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      lastLocationAt: Date | null;
+      status: string;
+      cargoType: string | null;
+      tons: number | null;
+    }>
+  > {
+    const trips = await this.tripRepository
+      .createQueryBuilder('trip')
+      .leftJoinAndSelect('trip.driver', 'driver')
+      .leftJoinAndSelect('driver.vehicles', 'vehicle')
+      .where('trip.destinationPortId = :portId', { portId })
+      .andWhere('trip.status = :status', { status: TripStatus.IN_TRANSIT })
+      .getMany();
+
+    return trips.map((trip) => {
+      const driver = trip.driver;
+      const vehicles = (driver as any)?.vehicles as Array<{ plate?: string }> | undefined;
+      const plate = vehicles && vehicles.length > 0 ? vehicles[0].plate ?? null : null;
+      return {
+        tripId: trip.id,
+        driverId: trip.driverId as string,
+        driverName: driver
+          ? `${driver.firstName ?? ''} ${driver.lastName ?? ''}`.trim()
+          : '',
+        plate,
+        latitude:
+          driver?.latitude !== null && driver?.latitude !== undefined
+            ? Number(driver.latitude)
+            : null,
+        longitude:
+          driver?.longitude !== null && driver?.longitude !== undefined
+            ? Number(driver.longitude)
+            : null,
+        lastLocationAt: driver?.lastLocationAt ?? null,
+        status: trip.status,
+        cargoType: (trip as any).cargoType ?? null,
+        tons: (trip as any).tons ?? null,
+      };
+    });
+  }
+
   async getTripDetail(portId: string, tripId: string): Promise<Trip> {
     const trip = await this.tripRepository.findOne({
       where: { id: tripId },

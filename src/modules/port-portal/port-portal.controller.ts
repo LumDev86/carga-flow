@@ -104,6 +104,15 @@ export class PortPortalController {
     return this.portPortalService.getTodayTrips(portId);
   }
 
+  @Get('active-deliveries')
+  @ApiOperation({
+    summary:
+      'Entregas en curso al puerto con última ubicación del chofer (mapa en vivo)',
+  })
+  getActiveDeliveries(@CurrentUser('portId') portId: string) {
+    return this.portPortalService.getActiveDeliveries(portId);
+  }
+
   @Get('trips/export')
   @ApiOperation({ summary: 'Exportar viajes (hasta 5000, formato JSON)' })
   exportTrips(

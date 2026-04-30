@@ -71,6 +71,11 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
       }
 
+      // If admin, join admins room (live driver location feed for CRM map)
+      if (userRole === 'ADMIN') {
+        client.join('admins');
+      }
+
       this.logger.log(`Client connected: ${userId} (${userRole})`);
     } catch {
       this.logger.warn(`Client ${client.id} failed auth`);
@@ -123,5 +128,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   emitToPort(portId: string, event: string, data: any) {
     this.server.to(`port:${portId}`).emit(event, data);
+  }
+
+  emitToAdmins(event: string, data: any) {
+    this.server.to('admins').emit(event, data);
   }
 }

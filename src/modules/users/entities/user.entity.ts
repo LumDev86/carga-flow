@@ -165,6 +165,9 @@ export class User {
   })
   longitude: number | null;
 
+  @Column({ name: 'last_location_at', type: 'timestamp', nullable: true })
+  lastLocationAt: Date | null;
+
   @Column({
     nullable: true,
     type: 'varchar',

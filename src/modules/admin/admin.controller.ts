@@ -292,6 +292,33 @@ export class AdminController {
     return this.adminService.rejectWithdrawal(id, dto);
   }
 
+  // ---- Drivers live map ----
+
+  @Get('drivers/locations')
+  @ApiOperation({
+    summary:
+      'Choferes con ubicación conocida para el mapa en vivo del CRM. Filtros: status (all|in_transit), sinceMs (ms relativos)',
+  })
+  async getDriverLocations(
+    @Query('status') status?: 'all' | 'in_transit',
+    @Query('sinceMs') sinceMs?: string,
+  ) {
+    const sinceMsNum = sinceMs ? parseInt(sinceMs, 10) : undefined;
+    return this.adminService.getDriverLocations({
+      status,
+      sinceMs:
+        sinceMsNum && !isNaN(sinceMsNum) && sinceMsNum > 0
+          ? sinceMsNum
+          : undefined,
+    });
+  }
+
+  @Get('drivers/:id/snapshot')
+  @ApiOperation({ summary: 'Snapshot del chofer para el side panel del mapa' })
+  async getDriverSnapshot(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminService.getDriverSnapshot(id);
+  }
+
   // ---- Port User Management ----
 
   @Post('ports/:portId/users')

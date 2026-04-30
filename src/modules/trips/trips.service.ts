@@ -1415,10 +1415,12 @@ export class TripsService {
       throw new BadRequestException('El viaje no está en tránsito');
     }
 
-    // Update driver location in user table
+    // Update driver location + last_location_at in user table
+    const now = new Date();
     await this.userRepository.update(driverId, {
       latitude: dto.latitude,
       longitude: dto.longitude,
+      lastLocationAt: now,
     });
 
     // Emit location to requester and trip subscribers
@@ -1429,11 +1431,23 @@ export class TripsService {
       longitude: dto.longitude,
       heading: dto.heading,
       speed: dto.speed,
-      timestamp: new Date().toISOString(),
+      timestamp: now.toISOString(),
     };
 
     this.eventsGateway.emitToUser(trip.requesterId, 'trip:driver_location', locationData);
     this.eventsGateway.emitTripUpdate(tripId, 'trip:driver_location', locationData);
+
+    // Emit to destination port operators (live map of active deliveries)
+    if (trip.destinationPortId) {
+      this.eventsGateway.emitToPort(
+        trip.destinationPortId,
+        'trip:driver_location',
+        locationData,
+      );
+    }
+
+    // Emit to admin room (live map in CRM)
+    this.eventsGateway.emitToAdmins('admin:driver_location', locationData);
   }
 
   async markTripAsViewing(tripId: string, driverId: string): Promise<void> {
