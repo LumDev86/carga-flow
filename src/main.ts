@@ -13,6 +13,10 @@ async function bootstrap() {
 
   // CORS configuration - support multiple origins (mobile app + web admin)
   const allowedOrigins = [
+    ...(process.env.ALLOWED_ORIGINS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
     process.env.FRONTEND_URL,
     process.env.WEB_URL || 'http://localhost:3001',
     process.env.PORT_WEB_URL || 'http://localhost:3002',
