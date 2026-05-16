@@ -13,3 +13,30 @@ services:
       - NODE_ENV=development
     volumes:
       - ./certs:/opt/carga-flow/certs:ro
+    labels:
+      - cargaflow.autoheal=true
+    # Si /api no responde en 5s, marca unhealthy. autoheal lo reinicia tras 3 fallos.
+    # 200/401/404 son todas respuestas válidas (significa que el server contesta).
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://localhost:3000/api', r => process.exit(0)).on('error', () => process.exit(1)).setTimeout(5000, function() { this.destroy(); process.exit(1); })"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+  # Reinicia containers marcados con label cargaflow.autoheal=true cuando quedan
+  # unhealthy. Label específica (no la default "autoheal") para no afectar otros
+  # containers del VPS que comparten el daemon.
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: carga-flow-autoheal
+    restart: always
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=cargaflow.autoheal
+      - AUTOHEAL_INTERVAL=30
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

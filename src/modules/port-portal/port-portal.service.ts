@@ -75,52 +75,52 @@ export class PortPortalService {
         .orWhere('trip.destinationPortId = :portId', { portId });
     });
 
-    const [tripsToday, tripsThisWeek, tripsThisMonth, pendingUnloads, arrivalsToday, departuresToday, demoradosToday, rechazadosToday] =
-      await Promise.all([
-        this.tripRepository
-          .createQueryBuilder('trip')
-          .where(portCondition)
-          .andWhere('trip.createdAt >= :startOfDay', { startOfDay })
-          .getCount(),
-        this.tripRepository
-          .createQueryBuilder('trip')
-          .where(portCondition)
-          .andWhere('trip.createdAt >= :startOfWeek', { startOfWeek })
-          .getCount(),
-        this.tripRepository
-          .createQueryBuilder('trip')
-          .where(portCondition)
-          .andWhere('trip.createdAt >= :startOfMonth', { startOfMonth })
-          .getCount(),
-        this.tripRepository
-          .createQueryBuilder('trip')
-          .where('trip.destinationPortId = :portId', { portId })
-          .andWhere('trip.status = :delivered', { delivered: TripStatus.DELIVERED })
-          .andWhere('trip.unloadConfirmedAt IS NULL')
-          .getCount(),
-        this.tripRepository
-          .createQueryBuilder('trip')
-          .where('trip.destinationPortId = :portId', { portId })
-          .andWhere('trip.createdAt >= :startOfDay', { startOfDay })
-          .getCount(),
-        this.tripRepository
-          .createQueryBuilder('trip')
-          .where('trip.originPortId = :portId', { portId })
-          .andWhere('trip.createdAt >= :startOfDay', { startOfDay })
-          .getCount(),
-        this.tripRepository
-          .createQueryBuilder('trip')
-          .where('trip.destinationPortId = :portId', { portId })
-          .andWhere('trip.arrivalStatus = :demorado', { demorado: ArrivalStatus.DEMORADO })
-          .andWhere('(trip.arrivalStatusSetAt >= :startOfDay OR trip.deliveredAt >= :startOfDay)', { startOfDay })
-          .getCount(),
-        this.tripRepository
-          .createQueryBuilder('trip')
-          .where('trip.destinationPortId = :portId', { portId })
-          .andWhere('trip.arrivalStatus = :rechazado', { rechazado: ArrivalStatus.RECHAZADO })
-          .andWhere('(trip.arrivalStatusSetAt >= :startOfDay OR trip.deliveredAt >= :startOfDay)', { startOfDay })
-          .getCount(),
-      ]);
+    // Secuencial en vez de Promise.all: las 8 queries en paralelo agotaban el pool
+    // de TypeORM (default max=10) cuando los crons del scheduler ya tenían
+    // conexiones tomadas. Suma ~200-300ms al endpoint pero deja de colgarse.
+    const tripsToday = await this.tripRepository
+      .createQueryBuilder('trip')
+      .where(portCondition)
+      .andWhere('trip.createdAt >= :startOfDay', { startOfDay })
+      .getCount();
+    const tripsThisWeek = await this.tripRepository
+      .createQueryBuilder('trip')
+      .where(portCondition)
+      .andWhere('trip.createdAt >= :startOfWeek', { startOfWeek })
+      .getCount();
+    const tripsThisMonth = await this.tripRepository
+      .createQueryBuilder('trip')
+      .where(portCondition)
+      .andWhere('trip.createdAt >= :startOfMonth', { startOfMonth })
+      .getCount();
+    const pendingUnloads = await this.tripRepository
+      .createQueryBuilder('trip')
+      .where('trip.destinationPortId = :portId', { portId })
+      .andWhere('trip.status = :delivered', { delivered: TripStatus.DELIVERED })
+      .andWhere('trip.unloadConfirmedAt IS NULL')
+      .getCount();
+    const arrivalsToday = await this.tripRepository
+      .createQueryBuilder('trip')
+      .where('trip.destinationPortId = :portId', { portId })
+      .andWhere('trip.createdAt >= :startOfDay', { startOfDay })
+      .getCount();
+    const departuresToday = await this.tripRepository
+      .createQueryBuilder('trip')
+      .where('trip.originPortId = :portId', { portId })
+      .andWhere('trip.createdAt >= :startOfDay', { startOfDay })
+      .getCount();
+    const demoradosToday = await this.tripRepository
+      .createQueryBuilder('trip')
+      .where('trip.destinationPortId = :portId', { portId })
+      .andWhere('trip.arrivalStatus = :demorado', { demorado: ArrivalStatus.DEMORADO })
+      .andWhere('(trip.arrivalStatusSetAt >= :startOfDay OR trip.deliveredAt >= :startOfDay)', { startOfDay })
+      .getCount();
+    const rechazadosToday = await this.tripRepository
+      .createQueryBuilder('trip')
+      .where('trip.destinationPortId = :portId', { portId })
+      .andWhere('trip.arrivalStatus = :rechazado', { rechazado: ArrivalStatus.RECHAZADO })
+      .andWhere('(trip.arrivalStatusSetAt >= :startOfDay OR trip.deliveredAt >= :startOfDay)', { startOfDay })
+      .getCount();
 
     // Pending CPEs: trips associated with this port that have status ACCEPTED/IN_TRANSIT without a CPE
     const pendingCpes = await this.tripRepository

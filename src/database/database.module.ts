@@ -28,6 +28,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
           : configService.get<string>('DB_SSL') === 'true'
             ? { rejectUnauthorized: false }
             : false,
+        // Pool: 30 conexiones (vs default 10) para que endpoints con queries
+        // paralelas (ej. port-portal/dashboard) no agoten el pool y se cuelguen.
+        // idle/connect timeouts evitan que conexiones zombies queden colgadas
+        // tras blips de red al pooler de Supabase.
+        extra: {
+          max: 30,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 5000,
+        },
       }),
     }),
   ],
