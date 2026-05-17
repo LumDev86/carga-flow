@@ -10,7 +10,10 @@ services:
     env_file:
       - .env
     environment:
-      - NODE_ENV=development
+      # production: TypeORM no corre synchronize al boot (solo migraciones).
+      # Las queries de schema sync con 30+ OR contra el pg_catalog se cortaban
+      # cuando el pooler de Supabase tenía blips. Con migrations basta.
+      - NODE_ENV=production
     volumes:
       - ./certs:/opt/carga-flow/certs:ro
     labels:
