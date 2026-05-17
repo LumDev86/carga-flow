@@ -15,8 +15,11 @@ services:
       - ./certs:/opt/carga-flow/certs:ro
     labels:
       - cargaflow.autoheal=true
-    # Si /api no responde en 5s, marca unhealthy. autoheal lo reinicia tras 3 fallos.
-    # 200/401/404 son todas respuestas válidas (significa que el server contesta).
+    # Si /api no responde en 5s, marca unhealthy (visible en `docker ps`).
+    # 200/401/404 son todas válidas — significa que el server contesta.
+    # Auto-restart de containers unhealthy queda pendiente: pendía de
+    # willfarrell/autoheal, que Docker Hub rechazó al pull desde el VPS.
+    # Por ahora basta con que healthcheck deje visible el estado.
     healthcheck:
       test:
         - CMD
@@ -27,16 +30,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 90s
-
-  # Reinicia containers marcados con label cargaflow.autoheal=true cuando quedan
-  # unhealthy. Label específica (no la default "autoheal") para no afectar otros
-  # containers del VPS que comparten el daemon.
-  autoheal:
-    image: willfarrell/autoheal:latest
-    container_name: carga-flow-autoheal
-    restart: always
-    environment:
-      - AUTOHEAL_CONTAINER_LABEL=cargaflow.autoheal
-      - AUTOHEAL_INTERVAL=30
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
