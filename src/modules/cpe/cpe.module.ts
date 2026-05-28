@@ -17,6 +17,6 @@ import { CpeController } from './cpe.controller';
   ],
   controllers: [CpeController],
   providers: [AfipService, AfipDelegationService, CpeService, CpeMappingService],
-  exports: [CpeService, AfipDelegationService],
+  exports: [CpeService, AfipDelegationService, AfipService],
 })
 export class CpeModule {}

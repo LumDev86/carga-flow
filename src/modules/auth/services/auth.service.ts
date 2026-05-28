@@ -16,6 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { UsersService } from '../../users/users.service';
 import { VehiclesService } from '../../vehicles/vehicles.service';
 import { UserRole } from '../../../shared/enums/user-role.enum';
+import { AfipService } from '../../cpe/services/afip.service';
 import { OtpService } from './otp.service';
 import { RefreshToken } from '../../users/entities/refresh-token.entity';
 import { User } from '../../users/entities/user.entity';
@@ -32,6 +33,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly vehiclesService: VehiclesService,
+    private readonly afipService: AfipService,
     private readonly jwtService: JwtService,
     private readonly otpService: OtpService,
     private readonly configService: ConfigService,
@@ -41,7 +43,23 @@ export class AuthService {
   ) {}
 
   async register(registerDto: RegisterDto): Promise<{ message: string }> {
+    // CUIT es opcional al registrarse: el usuario puede completarlo después desde el perfil
+    // o cuando intente publicar/aceptar un viaje. Solo validamos contra AFIP si vino en el payload.
+    // Si AFIP dice "invalid" abortamos (el dato ingresado es erróneo), si está "unavailable"
+    // creamos el usuario igual y un cron reintenta la validación.
+    let cuitResult = null as Awaited<ReturnType<AfipService['validatePadronCuit']>> | null;
+    if (registerDto.cuit) {
+      cuitResult = await this.afipService.validatePadronCuit(registerDto.cuit);
+      if (cuitResult.kind === 'invalid') {
+        throw new BadRequestException(cuitResult.reason);
+      }
+    }
+
     const user = await this.usersService.create(registerDto);
+
+    if (cuitResult) {
+      await this.usersService.applyCuitValidation(user.id, cuitResult);
+    }
 
     await this.otpService.generateAndSendEmailOtp(user);
 

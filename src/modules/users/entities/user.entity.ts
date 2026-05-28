@@ -91,6 +91,28 @@ export class User {
   })
   cuit: string | null;
 
+  // --- Validación de CUIT contra AFIP ---
+  @Column({ nullable: true, type: 'timestamp', name: 'cuit_verified_at' })
+  cuitVerifiedAt: Date | null;
+
+  @Column({ nullable: true, type: 'varchar', length: 255, name: 'cuit_razon_social' })
+  cuitRazonSocial: string | null;
+
+  @Column({ nullable: true, type: 'varchar', length: 20, name: 'cuit_tipo_persona' })
+  cuitTipoPersona: 'FISICA' | 'JURIDICA' | null;
+
+  @Column({ nullable: true, type: 'varchar', length: 100, name: 'cuit_condicion_fiscal' })
+  cuitCondicionFiscal: string | null;
+
+  @Column({ nullable: true, type: 'varchar', length: 255, name: 'cuit_validation_error' })
+  cuitValidationError: string | null;
+
+  @Column({ nullable: true, type: 'timestamp', name: 'cuit_last_validation_attempt_at' })
+  cuitLastValidationAttemptAt: Date | null;
+
+  @Column({ default: 0, name: 'completed_trips_as_requester' })
+  completedTripsAsRequester: number;
+
   @Column({
     type: 'enum',
     enum: UserStatus,

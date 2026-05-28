@@ -30,9 +30,9 @@ export class RegisterDto {
   @IsString()
   @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
   @Matches(
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&#]{8,}$/,
-    { 
-      message: 'La contraseña debe contener al menos una mayúscula, una minúscula y un número' 
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/,
+    {
+      message: 'La contraseña debe contener al menos una mayúscula, una minúscula y un número'
     }
   )
   password: string;
@@ -132,11 +132,15 @@ export class RegisterDto {
 
   @ApiProperty({
     example: '20-12345678-9',
-    description: 'CUIT del transportista (11 dígitos)',
+    description:
+      'CUIT (11 dígitos). Opcional al registrarse — si se envía, se valida contra AFIP. Puede completarse después desde el perfil.',
     required: false,
   })
   @IsString()
   @IsOptional()
+  @Matches(/^\d{2}-?\d{8}-?\d{1}$|^\d{11}$/, {
+    message: 'El CUIT debe tener 11 dígitos (con o sin guiones)',
+  })
   @MaxLength(20)
   cuit?: string;
 

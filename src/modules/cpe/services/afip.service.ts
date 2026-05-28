@@ -11,6 +11,18 @@ const WSCPE_URL_TEST = 'https://fwshomo.afip.gov.ar/wscpe/services/soap';
 const WSCPE_WSDL = 'wscpe.wsdl';
 const WSCPE_WSDL_TEST = 'wscpe-test.wsdl';
 
+export type CuitValidationResult =
+  | {
+      kind: 'valid';
+      cuit: string;
+      razonSocial: string | null;
+      tipoPersona: 'FISICA' | 'JURIDICA' | null;
+      condicionFiscal: string | null;
+      estadoClave: string;
+    }
+  | { kind: 'invalid'; reason: string }
+  | { kind: 'unavailable'; error: string };
+
 @Injectable()
 export class AfipService implements OnModuleInit {
   private readonly logger = new Logger(AfipService.name);
@@ -244,4 +256,113 @@ export class AfipService implements OnModuleInit {
       throw new Error('AFIP SDK no configurado. Verifique AFIP_CUIT, AFIP_CERT_PATH y AFIP_KEY_PATH.');
     }
   }
+
+  /**
+   * Valida un CUIT contra el padrón AFIP (ws_sr_constancia_inscripcion).
+   * Devuelve un discriminated union con el resultado: valid / invalid / unavailable.
+   * No lanza excepción por CUIT inválido o AFIP caído — el llamador decide qué hacer.
+   */
+  async validatePadronCuit(rawCuit: string): Promise<CuitValidationResult> {
+    const normalized = (rawCuit || '').replace(/[-\s]/g, '');
+
+    if (!/^\d{11}$/.test(normalized)) {
+      return {
+        kind: 'invalid',
+        reason: 'El CUIT debe tener 11 dígitos. Si no tenés un CUIT, dejá el campo vacío — es opcional.',
+      };
+    }
+
+    if (!isValidCuitChecksum(normalized)) {
+      return {
+        kind: 'invalid',
+        reason: 'El CUIT ingresado no es válido. Si no tenés un CUIT, dejá el campo vacío — es opcional.',
+      };
+    }
+
+    if (this.isDemoMode()) {
+      this.logger.log(`[DEMO] Validando CUIT ${normalized}`);
+      return {
+        kind: 'valid',
+        cuit: normalized,
+        razonSocial: 'DEMO - Razón Social Ficticia',
+        tipoPersona: normalized.startsWith('30') || normalized.startsWith('33') ? 'JURIDICA' : 'FISICA',
+        condicionFiscal: 'Monotributo',
+        estadoClave: 'ACTIVO',
+      };
+    }
+
+    if (!this.afip) {
+      return { kind: 'unavailable', error: 'AFIP SDK no configurado' };
+    }
+
+    try {
+      const timeoutMs = 10_000;
+      const persona: any = await Promise.race([
+        this.afip.RegisterInscriptionProof.getTaxpayerDetails(Number(normalized)),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('AFIP_TIMEOUT')), timeoutMs),
+        ),
+      ]);
+
+      if (!persona) {
+        return { kind: 'invalid', reason: 'El CUIT no existe en el padrón AFIP' };
+      }
+
+      const datosGenerales = persona.datosGenerales || persona;
+      const razonSocial =
+        datosGenerales.razonSocial ||
+        [datosGenerales.apellido, datosGenerales.nombre].filter(Boolean).join(', ') ||
+        null;
+      const tipoPersona =
+        datosGenerales.tipoPersona === 'FISICA' || datosGenerales.tipoPersona === 'JURIDICA'
+          ? datosGenerales.tipoPersona
+          : null;
+      const estadoClave = datosGenerales.estadoClave || 'ACTIVO';
+
+      if (estadoClave && estadoClave !== 'ACTIVO') {
+        return { kind: 'invalid', reason: `CUIT con estado ${estadoClave} en AFIP` };
+      }
+
+      const condicionFiscal = extractCondicionFiscal(persona);
+
+      return {
+        kind: 'valid',
+        cuit: normalized,
+        razonSocial,
+        tipoPersona,
+        condicionFiscal,
+        estadoClave,
+      };
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      this.logger.warn(`validatePadronCuit ${normalized} falló: ${msg}`);
+      return { kind: 'unavailable', error: msg.slice(0, 200) };
+    }
+  }
+}
+
+/**
+ * Verifica el dígito verificador del CUIT (módulo 11).
+ */
+export function isValidCuitChecksum(cuit: string): boolean {
+  if (!/^\d{11}$/.test(cuit)) return false;
+  const multipliers = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  const digits = cuit.split('').map((d) => Number(d));
+  const sum = multipliers.reduce((acc, m, i) => acc + m * digits[i], 0);
+  const mod = sum % 11;
+  const expected = mod === 0 ? 0 : mod === 1 ? 9 : 11 - mod;
+  return expected === digits[10];
+}
+
+function extractCondicionFiscal(persona: any): string | null {
+  // AFIP devuelve un array `datosMonotributo` o `datosRegimenGeneral` según el contribuyente.
+  if (persona?.datosMonotributo) return 'Monotributo';
+  if (persona?.datosRegimenGeneral) {
+    const impuestos = persona.datosRegimenGeneral.impuesto;
+    if (Array.isArray(impuestos) && impuestos.some((i: any) => i.idImpuesto === 30 || i.idImpuesto === 32)) {
+      return 'Responsable Inscripto';
+    }
+    return 'Régimen General';
+  }
+  return null;
 }

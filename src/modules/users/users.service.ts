@@ -11,6 +11,7 @@ import { User } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
+import type { CuitValidationResult } from '../cpe/services/afip.service';
 
 @Injectable()
 export class UsersService {
@@ -169,6 +170,32 @@ export class UsersService {
     user.address = updateLocationDto.address || null;
 
     return await this.userRepository.save(user);
+  }
+
+  /**
+   * Guarda el resultado de la validación de CUIT contra AFIP en el usuario.
+   * Si AFIP está caído, guardamos el error para reintentar vía cron; el usuario queda operativo
+   * pero con los rate-limits de "cuenta no verificada" hasta que pase la validación.
+   */
+  async applyCuitValidation(userId: string, result: CuitValidationResult): Promise<void> {
+    const now = new Date();
+    if (result.kind === 'valid') {
+      await this.userRepository.update(userId, {
+        cuit: result.cuit,
+        cuitVerifiedAt: now,
+        cuitRazonSocial: result.razonSocial,
+        cuitTipoPersona: result.tipoPersona,
+        cuitCondicionFiscal: result.condicionFiscal,
+        cuitValidationError: null,
+        cuitLastValidationAttemptAt: now,
+      });
+    } else if (result.kind === 'unavailable') {
+      await this.userRepository.update(userId, {
+        cuitVerifiedAt: null,
+        cuitValidationError: result.error,
+        cuitLastValidationAttemptAt: now,
+      });
+    }
   }
 
   async signIntermediationAuth(userId: string, dto: {

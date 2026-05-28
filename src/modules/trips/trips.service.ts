@@ -104,6 +104,42 @@ export class TripsService {
     }
   }
 
+  /**
+   * Anti-spam: un dador se considera "verificado" si tiene CUIT validado en AFIP
+   * o si ya completó >= 5 viajes (grandfather para cuentas con historial).
+   * Los NO verificados quedan limitados a 3 viajes activos concurrentes y 10 nuevos/día.
+   */
+  private async enforceNewAccountTripLimits(user: User): Promise<void> {
+    const VERIFIED_THRESHOLD = 5;
+    const MAX_ACTIVE_TRIPS = 3;
+    const MAX_DAILY_TRIPS = 10;
+    const isVerified = !!user.cuitVerifiedAt || user.completedTripsAsRequester >= VERIFIED_THRESHOLD;
+    if (isVerified) return;
+
+    const ACTIVE_STATUSES = [TripStatus.PENDING, TripStatus.BROADCAST, TripStatus.ASSIGNED, TripStatus.ACCEPTED];
+    const activeCount = await this.tripRepository.count({
+      where: { requesterId: user.id, status: In(ACTIVE_STATUSES) },
+    });
+    if (activeCount >= MAX_ACTIVE_TRIPS) {
+      throw new BadRequestException(
+        `Tenés ${MAX_ACTIVE_TRIPS} solicitudes activas esperando chofer. Cancelá alguna o esperá que la acepten antes de crear otra. Validá tu CUIT en el perfil para sacar este límite.`,
+      );
+    }
+
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    const dailyCount = await this.tripRepository
+      .createQueryBuilder('trip')
+      .where('trip.requester_id = :uid', { uid: user.id })
+      .andWhere('trip.created_at >= :since', { since })
+      .getCount();
+    if (dailyCount >= MAX_DAILY_TRIPS) {
+      throw new BadRequestException(
+        `Llegaste al límite diario de ${MAX_DAILY_TRIPS} solicitudes nuevas. Mañana podés crear más. Validá tu CUIT en el perfil para sacar este límite.`,
+      );
+    }
+  }
+
   async estimateTrip(dto: EstimateTripDto) {
     const directions = await this.geolocationService.getDirections(
       dto.originLat,
@@ -201,6 +237,11 @@ export class TripsService {
           'Debes firmar la autorización de intermediación antes de crear un viaje',
         );
       }
+    }
+
+    // Anti-spam: rate limits para dadores sin CUIT validado ni historial.
+    if (user && [UserRole.SOLICITANTE, UserRole.PRODUCTOR].includes(user.rol)) {
+      await this.enforceNewAccountTripLimits(user);
     }
 
     // Calculate route
@@ -985,6 +1026,15 @@ export class TripsService {
     trip.paymentStatus = 'pending_flete';
 
     const savedTrip = await this.tripRepository.save(trip);
+
+    // Trust: sumamos al contador del dador para relajar rate-limits y subir su badge.
+    if (trip.requesterId) {
+      await this.userRepository.increment(
+        { id: trip.requesterId },
+        'completedTripsAsRequester',
+        1,
+      );
+    }
 
     // Notify requester
     this.eventsGateway.emitToUser(trip.requesterId, 'trip:delivered', savedTrip);
